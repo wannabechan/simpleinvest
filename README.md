@@ -54,3 +54,5 @@ simpleinvest/
 │   └── README.md       # 백엔드 실행 가이드
 └── README.md           # 프로젝트 설명
 ```
+
+ 
