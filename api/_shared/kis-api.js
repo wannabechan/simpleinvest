@@ -8,22 +8,43 @@ export const APP_KEY = process.env.KIS_APP_KEY;
 export const APP_SECRET = process.env.KIS_APP_SECRET;
 
 // 토큰 캐싱 (Vercel Serverless Functions에서는 전역 변수가 공유됨)
+// 주의: Vercel Serverless Functions는 Cold Start 시 새 인스턴스가 생성될 수 있음
 let tokenCache = {
   token: null,
-  expiresAt: null
+  expiresAt: null,
+  lastRequestTime: null // 마지막 토큰 요청 시간 (Rate limit 방지)
 };
 
-// 액세스 토큰 발급 (캐싱 포함)
+// 액세스 토큰 발급 (캐싱 포함 + Rate limit 방지)
 export async function getAccessToken() {
-  // 캐시된 토큰이 있고 아직 유효하면 재사용
+  // API 키 확인
+  if (!APP_KEY || !APP_SECRET) {
+    throw new Error('API 키가 설정되지 않았습니다. 환경변수 KIS_APP_KEY와 KIS_APP_SECRET을 확인하세요.');
+  }
+  
   const now = Date.now();
+  
+  // 캐시된 토큰이 있고 아직 유효하면 재사용
   if (tokenCache.token && tokenCache.expiresAt && now < tokenCache.expiresAt) {
     console.log('캐시된 토큰 재사용');
     return tokenCache.token;
   }
   
+  // Rate limit 방지: 마지막 요청 후 1분(60초)이 지나지 않았고, 캐시된 토큰이 있으면 재사용
+  if (tokenCache.lastRequestTime && tokenCache.token) {
+    const timeSinceLastRequest = (now - tokenCache.lastRequestTime) / 1000; // 초 단위
+    if (timeSinceLastRequest < 65) { // 65초 (여유 있게 5초 추가)
+      console.log(`Rate limit 방지: 마지막 요청 후 ${Math.round(timeSinceLastRequest)}초 경과 - 캐시된 토큰 재사용`);
+      // 만료 시간을 1분 연장 (임시 조치)
+      tokenCache.expiresAt = Math.max(tokenCache.expiresAt || 0, now + 60000);
+      return tokenCache.token;
+    }
+  }
+  
   try {
     console.log('새 토큰 발급 요청');
+    tokenCache.lastRequestTime = now; // 요청 시간 기록
+    
     const response = await axios.post(
       'https://openapi.koreainvestment.com:9443/oauth2/tokenP',
       {
@@ -43,7 +64,7 @@ export async function getAccessToken() {
     
     // 토큰 캐싱 (만료 5분 전에 새로 발급받도록 설정)
     tokenCache.token = accessToken;
-    tokenCache.expiresAt = now + (expiresIn - 300) * 1000;
+    tokenCache.expiresAt = now + (expiresIn - 300) * 1000; // 만료 5분 전
     
     console.log(`토큰 발급 성공 (${new Date(tokenCache.expiresAt).toLocaleTimeString()}까지 유효)`);
     return accessToken;
@@ -53,10 +74,14 @@ export async function getAccessToken() {
     
     // Rate limit 오류인 경우 캐시된 토큰 재사용 시도
     if (error.response?.data?.error_code === 'EGW00133') {
-      console.warn('Rate limit 오류 발생 - 캐시된 토큰 재사용 시도');
+      console.warn('Rate limit 오류 발생 (1분당 1회 제한) - 캐시된 토큰 재사용 시도');
       if (tokenCache.token) {
+        // 만료 시간 연장 (임시 조치)
+        tokenCache.expiresAt = Math.max(tokenCache.expiresAt || 0, now + 60000);
         return tokenCache.token;
       }
+      // 캐시된 토큰이 없으면 에러 반환 (사용자에게 안내)
+      throw new Error('토큰 발급 제한에 도달했습니다. 잠시 후 다시 시도해주세요. (1분당 1회 제한)');
     }
     
     throw error;
@@ -88,6 +113,12 @@ export function isValidStockName(name) {
 export async function getStockName(stockCode, accessToken, appKey, appSecret) {
   // 매핑 우선 사용
   let stockName = stockNameMap[stockCode] || '알 수 없음';
+  
+  // API 키 확인
+  if (!appKey || !appSecret) {
+    console.warn('API 키가 없어 종목명 조회를 건너뜁니다. 매핑된 종목명 사용:', stockName);
+    return stockName;
+  }
   
   try {
     const stockInfoResponse = await axios.get(
