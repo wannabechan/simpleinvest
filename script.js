@@ -110,10 +110,13 @@ clearLogBtn.addEventListener('click', () => {
     addLog('로그가 지워졌습니다.', 'info');
 });
 
-// 주식 데이터를 가져오는 함수
-async function fetchStockData(stockCode) {
+// 주식 데이터를 가져오는 함수 (Rate limit 재시도 포함)
+async function fetchStockData(stockCode, retryCount = 0) {
+    const MAX_RETRIES = 2; // 최대 2번 재시도
+    const RETRY_DELAY = 70000; // 70초 대기 (1분 + 여유시간)
+    
     try {
-        addLog(`주식 데이터 요청 시작: ${stockCode}`, 'info');
+        addLog(`주식 데이터 요청 시작: ${stockCode}${retryCount > 0 ? ` (재시도 ${retryCount}/${MAX_RETRIES})` : ''}`, 'info');
         
         // 로딩 표시
         stockInfo.classList.add('hidden');
@@ -131,6 +134,24 @@ async function fetchStockData(stockCode) {
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             addLog(`에러 응답 데이터: ${JSON.stringify(errorData)}`, 'error');
+            
+            // Rate limit 에러인지 확인
+            const isRateLimit = errorData.error?.includes('1분당 1회') || 
+                              errorData.error?.includes('Rate limit') ||
+                              errorData.error?.includes('65초') ||
+                              errorData.message?.includes('1분당 1회') ||
+                              errorData.details?.error_code === 'EGW00133';
+            
+            // Rate limit 에러이고 재시도 횟수가 남아있으면 재시도
+            if (isRateLimit && retryCount < MAX_RETRIES) {
+                const waitSeconds = Math.ceil(RETRY_DELAY / 1000);
+                addLog(`⚠️ 토큰 발급 제한 감지. ${waitSeconds}초 후 자동 재시도합니다... (${retryCount + 1}/${MAX_RETRIES})`, 'warning');
+                
+                // 대기 후 재시도
+                await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+                return fetchStockData(stockCode, retryCount + 1);
+            }
+            
             throw new Error(errorData.error || `서버 오류: ${response.status}`);
         }
         
@@ -146,6 +167,21 @@ async function fetchStockData(stockCode) {
         addLog(`에러 발생: ${err.message}`, 'error');
         if (err.stack) {
             addLog(`스택 트레이스: ${err.stack}`, 'error');
+        }
+        
+        // Rate limit 에러인지 다시 확인 (에러 메시지에서)
+        const isRateLimit = err.message.includes('1분당 1회') || 
+                          err.message.includes('Rate limit') ||
+                          err.message.includes('65초');
+        
+        // Rate limit 에러이고 재시도 횟수가 남아있으면 재시도
+        if (isRateLimit && retryCount < MAX_RETRIES) {
+            const waitSeconds = Math.ceil(RETRY_DELAY / 1000);
+            addLog(`⚠️ 토큰 발급 제한 감지. ${waitSeconds}초 후 자동 재시도합니다... (${retryCount + 1}/${MAX_RETRIES})`, 'warning');
+            
+            // 대기 후 재시도
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            return fetchStockData(stockCode, retryCount + 1);
         }
         
         // 에러 메시지 표시
