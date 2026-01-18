@@ -21,14 +21,16 @@ const API_BASE_URL = window.location.hostname === 'localhost' || window.location
 
 // 주식 데이터를 가져오는 함수 (Rate limit 재시도 포함)
 async function fetchStockData(stockCode, retryCount = 0) {
-    const MAX_RETRIES = 2; // 최대 2번 재시도
+    const MAX_RETRIES = 1; // 최대 1번 재시도 (70초 대기)
     const RETRY_DELAY = 70000; // 70초 대기 (1분 + 여유시간)
     
     try {
-        // 로딩 표시
-        stockInfo.classList.add('hidden');
-        error.classList.add('hidden');
-        loading.classList.remove('hidden');
+        // 로딩 표시 (재시도가 아닐 때만)
+        if (retryCount === 0) {
+            stockInfo.classList.add('hidden');
+            error.classList.add('hidden');
+            loading.classList.remove('hidden');
+        }
         
         // 백엔드 API 호출
         const apiUrl = `${API_BASE_URL}/api/stock/${stockCode}`;
@@ -42,6 +44,7 @@ async function fetchStockData(stockCode, retryCount = 0) {
             const isRateLimit = errorData.error?.includes('1분당 1회') || 
                               errorData.error?.includes('Rate limit') ||
                               errorData.error?.includes('65초') ||
+                              errorData.error?.includes('토큰 발급') ||
                               errorData.message?.includes('1분당 1회') ||
                               errorData.details?.error_code === 'EGW00133';
             
@@ -49,8 +52,14 @@ async function fetchStockData(stockCode, retryCount = 0) {
             if (isRateLimit && retryCount < MAX_RETRIES) {
                 const waitSeconds = Math.ceil(RETRY_DELAY / 1000);
                 
+                // 로딩 메시지 업데이트
+                loading.textContent = `토큰 발급 제한으로 인해 ${waitSeconds}초 후 자동으로 재시도합니다...`;
+                
                 // 대기 후 재시도
                 await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+                
+                // 재시도 전 로딩 메시지 복원
+                loading.textContent = '데이터를 불러오는 중...';
                 return fetchStockData(stockCode, retryCount + 1);
             }
             
@@ -58,6 +67,9 @@ async function fetchStockData(stockCode, retryCount = 0) {
         }
         
         const data = await response.json();
+        
+        // 로딩 숨기기
+        loading.classList.add('hidden');
         
         // 데이터 표시
         displayStockData(data, stockCode);
@@ -68,29 +80,37 @@ async function fetchStockData(stockCode, retryCount = 0) {
         // Rate limit 에러인지 다시 확인 (에러 메시지에서)
         const isRateLimit = err.message.includes('1분당 1회') || 
                           err.message.includes('Rate limit') ||
-                          err.message.includes('65초');
+                          err.message.includes('65초') ||
+                          err.message.includes('토큰 발급');
         
         // Rate limit 에러이고 재시도 횟수가 남아있으면 재시도
         if (isRateLimit && retryCount < MAX_RETRIES) {
             const waitSeconds = Math.ceil(RETRY_DELAY / 1000);
             
+            // 로딩 메시지 업데이트
+            loading.textContent = `토큰 발급 제한으로 인해 ${waitSeconds}초 후 자동으로 재시도합니다...`;
+            
             // 대기 후 재시도
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            
+            // 재시도 전 로딩 메시지 복원
+            loading.textContent = '데이터를 불러오는 중...';
             return fetchStockData(stockCode, retryCount + 1);
         }
+        
+        // 로딩 숨기기
+        loading.classList.add('hidden');
         
         // 에러 메시지 표시
         let errorMessage = '주식 정보를 불러오는 중 오류가 발생했습니다.';
         
         if (err.message.includes('Failed to fetch') || err.message.includes('CORS')) {
-            errorMessage = '백엔드 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (http://localhost:3001)';
+            errorMessage = '백엔드 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.';
         } else if (err.message) {
             errorMessage = err.message;
         }
         
         showError(errorMessage);
-    } finally {
-        loading.classList.add('hidden');
     }
 }
 
