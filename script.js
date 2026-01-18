@@ -243,6 +243,26 @@ function displayStockCard(data, stockCode) {
     // 최고가와 최저가의 중간값 계산
     const middle = (data.high + data.low) / 2;
     
+    // 종가 대비 중간값 변화율 계산: (중간값 - 종가) / 종가 * 100
+    const close = data.close || 0;
+    let middleChangePercent = null;
+    let middleChangeClass = '';
+    
+    if (close > 0) {
+      middleChangePercent = ((middle - close) / close) * 100;
+      // 0.3% 이상 1.2% 이하일 경우 빨간색
+      if (middleChangePercent >= 0.3 && middleChangePercent <= 1.2) {
+        middleChangeClass = 'middle-highlight';
+      }
+    }
+    
+    // 중간값 표시 텍스트 생성
+    let middleDisplayText = formatPrice(Math.round(middle));
+    if (middleChangePercent !== null) {
+      const sign = middleChangePercent >= 0 ? '+' : '';
+      middleDisplayText += ` <span class="middle-change ${middleChangeClass}">(종가 대비 ${sign}${middleChangePercent.toFixed(2)}%)</span>`;
+    }
+    
     // 카드 HTML 생성
     const card = document.createElement('div');
     card.className = 'stock-info';
@@ -275,7 +295,7 @@ function displayStockCard(data, stockCode) {
             </div>
             <div class="info-item info-item-full">
                 <span class="info-label">중간값</span>
-                <span class="info-middle">${formatPrice(Math.round(middle))}</span>
+                <span class="info-middle">${middleDisplayText}</span>
             </div>
         </div>
     `;
