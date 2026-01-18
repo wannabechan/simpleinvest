@@ -10,9 +10,6 @@ const priceChange = document.getElementById('priceChange');
 const middleValue = document.getElementById('middleValue');
 const loading = document.getElementById('loading');
 const error = document.getElementById('error');
-const debugLog = document.getElementById('debugLog');
-const copyLogBtn = document.getElementById('copyLogBtn');
-const clearLogBtn = document.getElementById('clearLogBtn');
 
 // 백엔드 API 서버 주소 (환경에 따라 자동 선택)
 // vercel dev를 사용하면 같은 도메인을 사용하므로 빈 문자열
@@ -21,94 +18,6 @@ const API_BASE_URL = window.location.hostname === 'localhost' || window.location
   ? ''  // Vercel dev 사용 시 (같은 도메인) 또는 'http://localhost:3001' (기존 백엔드 서버 사용 시)
   : '';  // 프로덕션 환경 (Vercel은 같은 도메인 사용)
 
-// 로그 함수
-function addLog(message, type = 'info') {
-    if (!debugLog) return;
-    
-    const timestamp = new Date().toLocaleTimeString('ko-KR');
-    const logEntry = document.createElement('div');
-    logEntry.className = `debug-log-entry ${type}`;
-    
-    const timestampSpan = document.createElement('span');
-    timestampSpan.className = 'debug-log-timestamp';
-    timestampSpan.textContent = `[${timestamp}]`;
-    
-    const messageSpan = document.createElement('span');
-    messageSpan.className = 'debug-log-message';
-    
-    // 객체나 배열인 경우 JSON으로 변환
-    if (typeof message === 'object') {
-        messageSpan.textContent = JSON.stringify(message, null, 2);
-    } else {
-        messageSpan.textContent = message;
-    }
-    
-    logEntry.appendChild(timestampSpan);
-    logEntry.appendChild(messageSpan);
-    
-    debugLog.insertBefore(logEntry, debugLog.firstChild);
-    
-    // 로그가 너무 많아지면 오래된 로그 제거 (최대 50개)
-    while (debugLog.children.length > 50) {
-        debugLog.removeChild(debugLog.lastChild);
-    }
-}
-
-// 로그 복사
-copyLogBtn.addEventListener('click', async () => {
-    try {
-        // 모든 로그 엔트리 수집
-        const logEntries = Array.from(debugLog.children);
-        const logText = logEntries.map(entry => {
-            const timestamp = entry.querySelector('.debug-log-timestamp')?.textContent || '';
-            const message = entry.querySelector('.debug-log-message')?.textContent || '';
-            return `${timestamp} ${message}`;
-        }).join('\n');
-        
-        // 클립보드에 복사
-        await navigator.clipboard.writeText(logText);
-        
-        // 피드백 제공
-        const originalText = copyLogBtn.textContent;
-        copyLogBtn.textContent = '복사됨!';
-        copyLogBtn.style.backgroundColor = '#34a853';
-        copyLogBtn.style.color = '#ffffff';
-        
-        setTimeout(() => {
-            copyLogBtn.textContent = originalText;
-            copyLogBtn.style.backgroundColor = '';
-            copyLogBtn.style.color = '';
-        }, 2000);
-        
-        addLog('로그가 클립보드에 복사되었습니다.', 'success');
-    } catch (err) {
-        console.error('로그 복사 실패:', err);
-        addLog('로그 복사 실패: ' + err.message, 'error');
-        
-        // 대체 방법 (클립보드 API 미지원 시)
-        const textarea = document.createElement('textarea');
-        textarea.value = Array.from(debugLog.children)
-            .map(entry => entry.textContent)
-            .join('\n');
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        try {
-            document.execCommand('copy');
-            addLog('로그가 클립보드에 복사되었습니다.', 'success');
-        } catch (err2) {
-            addLog('로그 복사 실패. 수동으로 복사해주세요.', 'error');
-        }
-        document.body.removeChild(textarea);
-    }
-});
-
-// 로그 지우기
-clearLogBtn.addEventListener('click', () => {
-    debugLog.innerHTML = '';
-    addLog('로그가 지워졌습니다.', 'info');
-});
 
 // 주식 데이터를 가져오는 함수 (Rate limit 재시도 포함)
 async function fetchStockData(stockCode, retryCount = 0) {
@@ -116,8 +25,6 @@ async function fetchStockData(stockCode, retryCount = 0) {
     const RETRY_DELAY = 70000; // 70초 대기 (1분 + 여유시간)
     
     try {
-        addLog(`주식 데이터 요청 시작: ${stockCode}${retryCount > 0 ? ` (재시도 ${retryCount}/${MAX_RETRIES})` : ''}`, 'info');
-        
         // 로딩 표시
         stockInfo.classList.add('hidden');
         error.classList.add('hidden');
@@ -125,15 +32,11 @@ async function fetchStockData(stockCode, retryCount = 0) {
         
         // 백엔드 API 호출
         const apiUrl = `${API_BASE_URL}/api/stock/${stockCode}`;
-        addLog(`API 요청: ${apiUrl}`, 'info');
         
         const response = await fetch(apiUrl);
         
-        addLog(`응답 상태: ${response.status} ${response.statusText}`, response.ok ? 'success' : 'warning');
-        
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            addLog(`에러 응답 데이터: ${JSON.stringify(errorData)}`, 'error');
             
             // Rate limit 에러인지 확인
             const isRateLimit = errorData.error?.includes('1분당 1회') || 
@@ -145,7 +48,6 @@ async function fetchStockData(stockCode, retryCount = 0) {
             // Rate limit 에러이고 재시도 횟수가 남아있으면 재시도
             if (isRateLimit && retryCount < MAX_RETRIES) {
                 const waitSeconds = Math.ceil(RETRY_DELAY / 1000);
-                addLog(`⚠️ 토큰 발급 제한 감지. ${waitSeconds}초 후 자동 재시도합니다... (${retryCount + 1}/${MAX_RETRIES})`, 'warning');
                 
                 // 대기 후 재시도
                 await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
@@ -156,18 +58,12 @@ async function fetchStockData(stockCode, retryCount = 0) {
         }
         
         const data = await response.json();
-        addLog(`응답 데이터 수신: ${JSON.stringify(data)}`, 'success');
         
         // 데이터 표시
         displayStockData(data, stockCode);
-        addLog('주식 데이터 표시 완료', 'success');
         
     } catch (err) {
         console.error('API 호출 실패:', err);
-        addLog(`에러 발생: ${err.message}`, 'error');
-        if (err.stack) {
-            addLog(`스택 트레이스: ${err.stack}`, 'error');
-        }
         
         // Rate limit 에러인지 다시 확인 (에러 메시지에서)
         const isRateLimit = err.message.includes('1분당 1회') || 
@@ -177,7 +73,6 @@ async function fetchStockData(stockCode, retryCount = 0) {
         // Rate limit 에러이고 재시도 횟수가 남아있으면 재시도
         if (isRateLimit && retryCount < MAX_RETRIES) {
             const waitSeconds = Math.ceil(RETRY_DELAY / 1000);
-            addLog(`⚠️ 토큰 발급 제한 감지. ${waitSeconds}초 후 자동 재시도합니다... (${retryCount + 1}/${MAX_RETRIES})`, 'warning');
             
             // 대기 후 재시도
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
@@ -189,7 +84,6 @@ async function fetchStockData(stockCode, retryCount = 0) {
         
         if (err.message.includes('Failed to fetch') || err.message.includes('CORS')) {
             errorMessage = '백엔드 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요. (http://localhost:3001)';
-            addLog('CORS 또는 네트워크 오류 - 백엔드 서버 확인 필요', 'error');
         } else if (err.message) {
             errorMessage = err.message;
         }
