@@ -63,27 +63,52 @@ export default async function handler(req, res) {
         // 종목명 가져오기
         const stockName = await getStockName(stockCode, accessToken, KIS_APP_KEY, KIS_APP_SECRET);
         
-        // 한국투자증권 일자별 시세 조회 API
-        const response = await axios.get(
-          'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-daily-price',
-          {
-            params: {
-              FID_COND_MRKT_DIV_CODE: 'J',
-              FID_INPUT_ISCD: stockCode,
-              FID_INPUT_DATE_1: today,
-              FID_INPUT_DATE_2: today,
-              FID_PERIOD_DIV_CODE: 'D',
-              FID_ORG_ADJ_PRC: '0'
-            },
-            headers: {
-              'Authorization': `Bearer ${accessToken}`,
-              'appkey': KIS_APP_KEY,
-              'appsecret': KIS_APP_SECRET,
-              'tr_id': 'FHKST01010400',
-              'Content-Type': 'application/json'
+        // 한국투자증권 일자별 시세 조회 API (타임아웃 및 재시도 포함)
+        let response;
+        const maxRetries = 2; // 최대 2번 재시도
+        let lastError;
+        
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          try {
+            response = await axios.get(
+              'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-daily-price',
+              {
+                params: {
+                  FID_COND_MRKT_DIV_CODE: 'J',
+                  FID_INPUT_ISCD: stockCode,
+                  FID_INPUT_DATE_1: today,
+                  FID_INPUT_DATE_2: today,
+                  FID_PERIOD_DIV_CODE: 'D',
+                  FID_ORG_ADJ_PRC: '0'
+                },
+                headers: {
+                  'Authorization': `Bearer ${accessToken}`,
+                  'appkey': KIS_APP_KEY,
+                  'appsecret': KIS_APP_SECRET,
+                  'tr_id': 'FHKST01010400',
+                  'Content-Type': 'application/json'
+                },
+                timeout: 30000 // 30초 타임아웃
+              }
+            );
+            break; // 성공하면 루프 탈출
+          } catch (error) {
+            lastError = error;
+            const isNetworkError = error.code === 'ECONNRESET' || 
+                                  error.code === 'ETIMEDOUT' ||
+                                  error.code === 'ENOTFOUND' ||
+                                  error.message?.includes('socket hang up') ||
+                                  error.message?.includes('timeout');
+            
+            if (isNetworkError && attempt < maxRetries) {
+              const delay = (attempt + 1) * 2000; // 2초, 4초, 6초...
+              console.log(`⚠️ ${stockCode} 네트워크 오류 발생 (${error.message}). ${delay/1000}초 후 재시도... (${attempt + 1}/${maxRetries})`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+              throw error; // 재시도 불가능하거나 최대 재시도 횟수 초과
             }
           }
-        );
+        }
         
         // 응답 데이터 확인
         if (!response.data.output || response.data.output.length === 0) {
@@ -127,7 +152,16 @@ export default async function handler(req, res) {
         console.log(`✅ ${stockCode} 조회 완료: ${stockName}`);
       } catch (error) {
         console.error(`❌ ${stockCode} 조회 실패:`, error.message);
-        errors[stockCode] = error.response?.data?.msg1 || error.message || '알 수 없는 오류';
+        const errorMessage = error.response?.data?.msg1 || error.message || '알 수 없는 오류';
+        
+        // socket hang up 등 네트워크 오류의 경우 더 명확한 메시지
+        if (error.message?.includes('socket hang up') || 
+            error.code === 'ECONNRESET' || 
+            error.code === 'ETIMEDOUT') {
+          errors[stockCode] = `네트워크 연결 오류: ${errorMessage} (한국투자증권 API 서버와의 연결이 끊어졌습니다. 잠시 후 다시 시도해주세요.)`;
+        } else {
+          errors[stockCode] = errorMessage;
+        }
       }
     }
     
