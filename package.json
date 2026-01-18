@@ -1,6 +1,6 @@
 {
   "name": "simpleinvest",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "간단한 주식 정보 검색 사이트",
   "scripts": {},
   "dependencies": {
