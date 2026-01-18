@@ -76,9 +76,12 @@ export async function getAccessToken() {
     const accessToken = response.data.access_token;
     const expiresIn = response.data.expires_in || 86400; // 기본 24시간 (초)
     
-    // 토큰 캐싱 (만료 5분 전에 새로 발급받도록 설정)
+    // 토큰 캐싱 (12시간 동안 유효하게 설정)
+    // 실제 토큰은 24시간 유효하므로, 12시간 후에 재발급하도록 설정
+    // 이렇게 하면 하루에 최대 2번만 토큰을 발급받으면 되어 Rate limit 문제를 크게 줄임
+    const cacheDuration = 12 * 60 * 60 * 1000; // 12시간 (밀리초)
     tokenCache.token = accessToken;
-    tokenCache.expiresAt = now + (expiresIn - 300) * 1000; // 만료 5분 전
+    tokenCache.expiresAt = now + cacheDuration; // 12시간 후 재발급
     tokenCache.isRequesting = false; // 요청 완료
     
     console.log(`✅ 토큰 발급 성공 (${new Date(tokenCache.expiresAt).toLocaleTimeString()}까지 유효, 약 ${Math.round(expiresIn / 3600)}시간)`);
@@ -119,7 +122,9 @@ export function getTodayString() {
 
 // 종목명 매핑
 export const stockNameMap = {
-  '005930': '삼성전자'
+  '005930': '삼성전자',
+  '000660': 'SK하이닉스',
+  '005380': '현대차'
 };
 
 // 종목명이 유효한지 확인하는 함수
