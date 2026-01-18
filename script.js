@@ -283,7 +283,7 @@ function displayStockCard(data, stockCode) {
             </div>
             <div class="info-item info-item-full">
                 <span class="info-label">등락</span>
-                <span class="info-change ${change > 0 ? 'up' : change < 0 ? 'down' : 'equal'}">${formatChange(change, changePercent)}</span>
+                <span class="info-change ${change > 0 ? 'up' : change < 0 ? 'down' : 'equal'}">${formatChange(change, changePercent, changePercent >= -2 && changePercent <= -0.5 ? ' ←' : '')}</span>
             </div>
             <div class="info-item">
                 <span class="info-label">최고가</span>
@@ -317,13 +317,13 @@ function formatPrice(price) {
 }
 
 // 변화량 포맷팅 (상승/하락)
-function formatChange(change, changePercent) {
+function formatChange(change, changePercent, suffix = '') {
     if (change > 0) {
-        return `+${formatPrice(Math.abs(change))} (+${changePercent.toFixed(2)}%)`;
+        return `+${formatPrice(Math.abs(change))} (+${changePercent.toFixed(2)}%)${suffix}`;
     } else if (change < 0) {
-        return `${formatPrice(change)} (${changePercent.toFixed(2)}%)`;
+        return `${formatPrice(change)} (${changePercent.toFixed(2)}%)${suffix}`;
     } else {
-        return `0원 (0.00%)`;
+        return `0원 (0.00%)${suffix}`;
     }
 }
 
