@@ -10,9 +10,11 @@ export const APP_SECRET = process.env.KIS_APP_SECRET;
 // 토큰 캐싱 (Vercel Serverless Functions에서는 전역 변수가 공유됨)
 // 주의: Vercel Serverless Functions는 Cold Start 시 새 인스턴스가 생성될 수 있음
 // 여러 인스턴스가 동시에 실행되면 각각 토큰을 요청할 수 있음
+// 하지만 같은 인스턴스가 재사용되면 캐시가 유지됨
 let tokenCache = {
   token: null,
-  expiresAt: null,
+  expiresAt: null, // 캐시 만료 시간 (12시간)
+  tokenIssuedAt: null, // 실제 토큰 발급 시간 (실제 토큰 만료 확인용 - 24시간)
   lastRequestTime: null, // 마지막 토큰 요청 시간 (Rate limit 방지)
   isRequesting: false // 토큰 요청 중 플래그 (중복 요청 방지)
 };
@@ -25,26 +27,40 @@ export async function getAccessToken() {
   }
   
   const now = Date.now();
+  const TWELVE_HOURS = 12 * 60 * 60 * 1000; // 12시간 (밀리초)
+  const TWENTY_THREE_HOURS = 23 * 60 * 60 * 1000; // 23시간 (실제 토큰 만료 체크용)
   
-  // 캐시된 토큰이 있고 아직 유효하면 재사용 (가장 우선)
+  // 1. 캐시된 토큰이 있고 캐시 만료 시간(12시간)이 지나지 않았으면 재사용 (가장 우선)
   if (tokenCache.token && tokenCache.expiresAt && now < tokenCache.expiresAt) {
-    console.log('✅ 캐시된 토큰 재사용 (유효함)');
+    console.log('✅ 캐시된 토큰 재사용 (12시간 이내)');
     return tokenCache.token;
   }
   
-  // Rate limit 방지: 마지막 요청 후 65초 이내면 캐시된 토큰 재사용 (만료되었어도)
+  // 2. 캐시 만료 시간은 지났지만, 실제 토큰 발급 후 23시간 이내면 재사용
+  // (실제 토큰은 24시간 유효하므로 아직 유효함)
+  if (tokenCache.token && tokenCache.tokenIssuedAt) {
+    const timeSinceTokenIssued = now - tokenCache.tokenIssuedAt;
+    if (timeSinceTokenIssued < TWENTY_THREE_HOURS) {
+      console.log(`✅ 캐시 만료되었지만 실제 토큰은 유효함 (발급 후 ${Math.round(timeSinceTokenIssued / 3600000)}시간 경과) - 토큰 재사용`);
+      // 캐시 만료 시간을 연장 (12시간 더)
+      tokenCache.expiresAt = now + TWELVE_HOURS;
+      return tokenCache.token;
+    }
+  }
+  
+  // 3. Rate limit 방지: 마지막 토큰 요청 후 70초 이내면 캐시된 토큰 재사용 (최후의 수단)
   if (tokenCache.lastRequestTime && tokenCache.token) {
     const timeSinceLastRequest = (now - tokenCache.lastRequestTime) / 1000; // 초 단위
-    if (timeSinceLastRequest < 65) { // 65초 (여유 있게 5초 추가)
-      const remainingSeconds = Math.ceil(65 - timeSinceLastRequest);
+    if (timeSinceLastRequest < 70) { // 70초 (더 여유있게)
+      const remainingSeconds = Math.ceil(70 - timeSinceLastRequest);
       console.log(`⏳ Rate limit 방지: 마지막 요청 후 ${Math.round(timeSinceLastRequest)}초 경과 (${remainingSeconds}초 후 재시도 가능) - 캐시된 토큰 재사용`);
-      // 만료 시간을 연장 (임시 조치)
+      // 캐시 만료 시간 연장
       tokenCache.expiresAt = Math.max(tokenCache.expiresAt || 0, now + remainingSeconds * 1000);
       return tokenCache.token;
     }
   }
   
-  // 다른 요청이 이미 진행 중이면 잠시 대기 후 재시도
+  // 4. 다른 요청이 이미 진행 중이면 잠시 대기 후 재시도
   if (tokenCache.isRequesting && tokenCache.token) {
     console.log('⏳ 다른 요청이 토큰 발급 중... 캐시된 토큰 재사용');
     // 최대 2초 대기
@@ -76,15 +92,14 @@ export async function getAccessToken() {
     const accessToken = response.data.access_token;
     const expiresIn = response.data.expires_in || 86400; // 기본 24시간 (초)
     
-    // 토큰 캐싱 (12시간 동안 유효하게 설정)
-    // 실제 토큰은 24시간 유효하므로, 12시간 후에 재발급하도록 설정
-    // 이렇게 하면 하루에 최대 2번만 토큰을 발급받으면 되어 Rate limit 문제를 크게 줄임
-    const cacheDuration = 12 * 60 * 60 * 1000; // 12시간 (밀리초)
+    // 토큰 캐싱 (12시간 동안 캐시 유지, 실제 토큰은 24시간 유효)
+    // 실제 토큰 발급 시간도 기록하여 23시간까지 재사용 가능하도록 함
     tokenCache.token = accessToken;
-    tokenCache.expiresAt = now + cacheDuration; // 12시간 후 재발급
+    tokenCache.expiresAt = now + TWELVE_HOURS; // 12시간 후 캐시 만료
+    tokenCache.tokenIssuedAt = now; // 실제 토큰 발급 시간 기록
     tokenCache.isRequesting = false; // 요청 완료
     
-    console.log(`✅ 토큰 발급 성공 (${new Date(tokenCache.expiresAt).toLocaleTimeString()}까지 유효, 약 ${Math.round(expiresIn / 3600)}시간)`);
+    console.log(`✅ 토큰 발급 성공 (캐시 만료: ${new Date(tokenCache.expiresAt).toLocaleTimeString()}, 실제 토큰 만료: 약 ${Math.round(expiresIn / 3600)}시간 후)`);
     return accessToken;
   } catch (error) {
     tokenCache.isRequesting = false; // 요청 실패 시 플래그 해제
@@ -102,9 +117,9 @@ export async function getAccessToken() {
       }
       // 캐시된 토큰이 없으면 사용자 친화적인 메시지
       const waitTime = tokenCache.lastRequestTime 
-        ? Math.ceil(65 - (now - tokenCache.lastRequestTime) / 1000)
-        : 60;
-      throw new Error(`한국투자증권 API 정책: 토큰 발급은 1분당 1회만 가능합니다. ${waitTime}초 후 다시 시도해주세요. (토큰은 한 번 발급받으면 24시간 동안 유효합니다)`);
+        ? Math.ceil(70 - (now - tokenCache.lastRequestTime) / 1000)
+        : 70;
+      throw new Error(`한국투자증권 API 정책: 토큰 발급은 1분당 1회만 가능합니다. 약 ${waitTime}초 후 자동으로 재시도됩니다. (토큰은 한 번 발급받으면 24시간 동안 유효합니다)`);
     }
     
     throw error;
