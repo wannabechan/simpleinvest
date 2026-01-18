@@ -79,25 +79,32 @@ export default async function handler(req, res) {
     }
     
     // 최근 거래일 데이터 (첫 번째 항목이 가장 최근)
-    const data = response.data.output[0];
-    // 전일 데이터 (두 번째 항목이 전일)
-    const prevData = response.data.output[1] || null;
+    const latestData = response.data.output[0];
+    // 최근 개장일 바로 이전의 개장일 데이터 (두 번째 항목)
+    const data = response.data.output[1];
     
-    // 날짜 파싱 (YYYYMMDD -> Date)
+    // 최근 개장일 바로 이전의 개장일이 없으면 에러
+    if (!data) {
+      return res.status(404).json({ 
+        error: '최근 개장일 바로 이전의 개장일 데이터를 찾을 수 없습니다.' 
+      });
+    }
+    
+    // 날짜 파싱 (YYYYMMDD -> Date) - 최근 개장일 바로 이전의 개장일 사용
     const dateStr = data.stck_bsop_date;
     const year = parseInt(dateStr.substring(0, 4));
     const month = parseInt(dateStr.substring(4, 6)) - 1;
     const day = parseInt(dateStr.substring(6, 8));
     const date = new Date(year, month, day);
     
-    // 전일종가 계산 (전일 데이터가 있으면 전일 종가, 없으면 현재 데이터의 전일종가 필드 사용)
-    const prevClose = prevData 
-      ? parseInt(prevData.stck_clpr) || 0
+    // 전일종가 계산 (현재 기준일의 전일 종가 = 최근 거래일의 종가 또는 현재 데이터의 전일종가 필드 사용)
+    const prevClose = latestData 
+      ? parseInt(latestData.stck_clpr) || 0
       : (parseInt(data.stck_prdy_clpr) || 0);
     
     const result = {
       name: stockName,
-      date: date,
+      date: date, // 최근 개장일 바로 이전의 개장일
       open: parseInt(data.stck_oprc) || 0,
       close: parseInt(data.stck_clpr) || 0,
       high: parseInt(data.stck_hgpr) || 0,
