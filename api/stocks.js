@@ -93,6 +93,8 @@ export default async function handler(req, res) {
         
         // 최근 거래일 데이터 (첫 번째 항목이 가장 최근)
         const data = response.data.output[0];
+        // 전일 데이터 (두 번째 항목이 전일)
+        const prevData = response.data.output[1] || null;
         
         // 날짜 파싱 (YYYYMMDD -> Date)
         const dateStr = data.stck_bsop_date;
@@ -101,13 +103,19 @@ export default async function handler(req, res) {
         const day = parseInt(dateStr.substring(6, 8));
         const date = new Date(year, month, day);
         
+        // 전일종가 계산 (전일 데이터가 있으면 전일 종가, 없으면 현재 데이터의 전일종가 필드 사용)
+        const prevClose = prevData 
+          ? parseInt(prevData.stck_clpr) || 0
+          : (parseInt(data.stck_prdy_clpr) || 0);
+        
         results[stockCode] = {
           name: stockName,
           date: date,
           open: parseInt(data.stck_oprc) || 0,
           close: parseInt(data.stck_clpr) || 0,
           high: parseInt(data.stck_hgpr) || 0,
-          low: parseInt(data.stck_lwpr) || 0
+          low: parseInt(data.stck_lwpr) || 0,
+          prevClose: prevClose // 전일종가 추가
         };
         
         console.log(`✅ ${stockCode} 조회 완료: ${stockName}`);
