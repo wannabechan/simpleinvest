@@ -11,6 +11,7 @@ const middleValue = document.getElementById('middleValue');
 const loading = document.getElementById('loading');
 const error = document.getElementById('error');
 const debugLog = document.getElementById('debugLog');
+const copyLogBtn = document.getElementById('copyLogBtn');
 const clearLogBtn = document.getElementById('clearLogBtn');
 
 // 백엔드 API 서버 주소 (환경에 따라 자동 선택)
@@ -52,6 +53,56 @@ function addLog(message, type = 'info') {
         debugLog.removeChild(debugLog.lastChild);
     }
 }
+
+// 로그 복사
+copyLogBtn.addEventListener('click', async () => {
+    try {
+        // 모든 로그 엔트리 수집
+        const logEntries = Array.from(debugLog.children);
+        const logText = logEntries.map(entry => {
+            const timestamp = entry.querySelector('.debug-log-timestamp')?.textContent || '';
+            const message = entry.querySelector('.debug-log-message')?.textContent || '';
+            return `${timestamp} ${message}`;
+        }).join('\n');
+        
+        // 클립보드에 복사
+        await navigator.clipboard.writeText(logText);
+        
+        // 피드백 제공
+        const originalText = copyLogBtn.textContent;
+        copyLogBtn.textContent = '복사됨!';
+        copyLogBtn.style.backgroundColor = '#34a853';
+        copyLogBtn.style.color = '#ffffff';
+        
+        setTimeout(() => {
+            copyLogBtn.textContent = originalText;
+            copyLogBtn.style.backgroundColor = '';
+            copyLogBtn.style.color = '';
+        }, 2000);
+        
+        addLog('로그가 클립보드에 복사되었습니다.', 'success');
+    } catch (err) {
+        console.error('로그 복사 실패:', err);
+        addLog('로그 복사 실패: ' + err.message, 'error');
+        
+        // 대체 방법 (클립보드 API 미지원 시)
+        const textarea = document.createElement('textarea');
+        textarea.value = Array.from(debugLog.children)
+            .map(entry => entry.textContent)
+            .join('\n');
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+            document.execCommand('copy');
+            addLog('로그가 클립보드에 복사되었습니다.', 'success');
+        } catch (err2) {
+            addLog('로그 복사 실패. 수동으로 복사해주세요.', 'error');
+        }
+        document.body.removeChild(textarea);
+    }
+});
 
 // 로그 지우기
 clearLogBtn.addEventListener('click', () => {

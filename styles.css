@@ -191,6 +191,12 @@ body {
     color: #202124;
 }
 
+.debug-log-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.copy-log-btn,
 .clear-log-btn {
     padding: 6px 12px;
     font-size: 12px;
@@ -202,8 +208,13 @@ body {
     transition: background-color 0.2s;
 }
 
+.copy-log-btn:hover,
 .clear-log-btn:hover {
     background-color: #f1f3f4;
+}
+
+.copy-log-btn:active {
+    background-color: #e8eaed;
 }
 
 .debug-log-content {
