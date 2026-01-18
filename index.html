@@ -12,49 +12,21 @@
             <h1 class="logo">주식 정보 검색</h1>
             <div class="search-box">
                 <select id="stockSelect" class="stock-select">
-                    <option value="">종목을 선택하세요</option>
-                    <option value="005930" selected>삼성전자 (005930)</option>
+                    <option value="" selected>등록된 종목 목록</option>
+                    <option value="005930">삼성전자 (005930)</option>
                     <option value="000660">SK하이닉스 (000660)</option>
                     <option value="005380">현대차 (005380)</option>
                 </select>
             </div>
         </div>
         
-        <div id="stockInfo" class="stock-info hidden">
-            <div class="info-header">
-                <h2 id="stockName" class="stock-name"></h2>
-                <p id="stockDate" class="stock-date"></p>
-            </div>
-            <div class="info-grid">
-                <div class="info-item">
-                    <span class="info-label">시작가</span>
-                    <span id="openPrice" class="info-value"></span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">종가</span>
-                    <span id="closePrice" class="info-value"></span>
-                </div>
-                <div class="info-item info-item-full">
-                    <span class="info-label">등락</span>
-                    <span id="priceChange" class="info-change"></span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">최고가</span>
-                    <span id="highPrice" class="info-value"></span>
-                </div>
-                <div class="info-item">
-                    <span class="info-label">최저가</span>
-                    <span id="lowPrice" class="info-value"></span>
-                </div>
-                <div class="info-item info-item-full">
-                    <span class="info-label">중간값</span>
-                    <span id="middleValue" class="info-middle"></span>
-                </div>
-            </div>
-        </div>
+        <div id="stocksContainer" class="stocks-container"></div>
         
         <div id="loading" class="loading hidden">데이터를 불러오는 중...</div>
-        <div id="error" class="error hidden"></div>
+        <div id="error" class="error hidden">
+            <div id="errorMessage"></div>
+            <button id="refreshButton" class="refresh-button hidden">재시도</button>
+        </div>
     </div>
     
     <script src="script.js"></script>

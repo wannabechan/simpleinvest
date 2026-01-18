@@ -58,9 +58,27 @@ body {
     box-shadow: 0 2px 5px 1px rgba(64, 60, 67, 0.16);
 }
 
+.stock-select:disabled {
+    opacity: 0.7;
+    cursor: default;
+    background-color: #f8f9fa;
+}
+
+/* 선택 기능 비활성화된 콤보박스 스타일 (목록 조회만 가능) */
+.stock-select.read-only {
+    cursor: pointer;
+    background-color: #ffffff;
+}
+
 .stock-select:focus {
     border-color: #4285f4;
     box-shadow: 0 2px 5px 1px rgba(64, 60, 67, 0.16);
+}
+
+.stocks-container {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
 }
 
 .stock-info {
@@ -68,10 +86,6 @@ body {
     border-radius: 8px;
     padding: 30px;
     box-shadow: 0 1px 6px rgba(32, 33, 36, 0.28);
-}
-
-.stock-info.hidden {
-    display: none;
 }
 
 .info-header {
@@ -171,6 +185,43 @@ body {
     display: none;
 }
 
+#errorMessage {
+    margin-bottom: 16px;
+}
+
+.refresh-button {
+    background-color: #4285f4;
+    color: #ffffff;
+    border: none;
+    border-radius: 24px;
+    padding: 12px 24px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s, box-shadow 0.2s, opacity 0.2s;
+    margin-top: 12px;
+}
+
+.refresh-button:hover:not(:disabled) {
+    background-color: #3367d6;
+    box-shadow: 0 2px 5px 1px rgba(64, 60, 67, 0.16);
+}
+
+.refresh-button:active:not(:disabled) {
+    background-color: #2851a3;
+}
+
+.refresh-button:disabled {
+    background-color: #dadce0;
+    color: #80868b;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.refresh-button.hidden {
+    display: none;
+}
+
 @media (max-width: 600px) {
     body {
         padding: 16px 12px;
@@ -189,6 +240,10 @@ body {
         padding: 10px 16px;
         font-size: 14px;
         padding-right: 40px;
+    }
+    
+    .stocks-container {
+        gap: 16px;
     }
     
     .stock-info {
