@@ -95,7 +95,8 @@ export async function getAccessToken() {
       {
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        timeout: 30000 // 30초 타임아웃
       }
     );
     
@@ -198,7 +199,8 @@ export async function getStockName(stockCode, accessToken, appKey, appSecret) {
           'appsecret': appSecret,
           'tr_id': 'FHKST01010100',
           'Content-Type': 'application/json'
-        }
+        },
+        timeout: 30000 // 30초 타임아웃
       }
     );
     
