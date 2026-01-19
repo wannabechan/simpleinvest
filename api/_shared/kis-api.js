@@ -241,7 +241,7 @@ export async function getStockName(stockCode, accessToken, appKey, appSecret) {
   return stockName;
 }
 
-// 현재가 가져오기
+// 현재가 가져오기 (재시도 로직 포함)
 export async function getCurrentPrice(stockCode, accessToken, appKey, appSecret) {
   // API 키 확인
   if (!appKey || !appSecret) {
@@ -249,37 +249,64 @@ export async function getCurrentPrice(stockCode, accessToken, appKey, appSecret)
     return null;
   }
   
-  try {
-    const stockInfoResponse = await axios.get(
-      'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-price',
-      {
-        params: {
-          FID_COND_MRKT_DIV_CODE: 'J',
-          FID_INPUT_ISCD: stockCode
-        },
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'appkey': appKey,
-          'appsecret': appSecret,
-          'tr_id': 'FHKST01010100',
-          'Content-Type': 'application/json'
-        },
-        timeout: 30000 // 30초 타임아웃
+  const maxRetries = 2; // 최대 2번 재시도
+  let lastError;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const stockInfoResponse = await axios.get(
+        'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-price',
+        {
+          params: {
+            FID_COND_MRKT_DIV_CODE: 'J',
+            FID_INPUT_ISCD: stockCode
+          },
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'appkey': appKey,
+            'appsecret': appSecret,
+            'tr_id': 'FHKST01010100',
+            'Content-Type': 'application/json'
+          },
+          timeout: 30000 // 30초 타임아웃
+        }
+      );
+      
+      const output = stockInfoResponse.data.output || stockInfoResponse.data.output1;
+      if (output) {
+        // 현재가: stck_prpr (현재가)
+        const currentPrice = parseInt(output.stck_prpr) || null;
+        if (currentPrice !== null && currentPrice > 0) {
+          console.log(`✅ 현재가 조회 성공: ${stockCode} - ${currentPrice}`);
+          return currentPrice;
+        } else {
+          console.warn(`⚠️ 현재가 조회 실패: ${stockCode} - 응답에 유효한 현재가 없음 (stck_prpr: ${output.stck_prpr})`);
+        }
+      } else {
+        console.warn(`⚠️ 현재가 조회 실패: ${stockCode} - 응답에 output 데이터 없음`);
       }
-    );
-    
-    const output = stockInfoResponse.data.output || stockInfoResponse.data.output1;
-    if (output) {
-      // 현재가: stck_prpr (현재가)
-      const currentPrice = parseInt(output.stck_prpr) || null;
-      if (currentPrice !== null) {
-        console.log(`현재가 조회 성공: ${stockCode} - ${currentPrice}`);
-        return currentPrice;
+      // 응답은 받았지만 데이터가 없으면 재시도하지 않음
+      return null;
+    } catch (error) {
+      lastError = error;
+      const isNetworkError = error.code === 'ECONNRESET' || 
+                            error.code === 'ETIMEDOUT' ||
+                            error.code === 'ENOTFOUND' ||
+                            error.message?.includes('socket hang up') ||
+                            error.message?.includes('timeout');
+      
+      if (isNetworkError && attempt < maxRetries) {
+        const delay = (attempt + 1) * 2000; // 2초, 4초
+        console.log(`⚠️ ${stockCode} 현재가 조회 네트워크 오류 (${error.message}). ${delay/1000}초 후 재시도... (${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      } else {
+        console.error(`❌ ${stockCode} 현재가 조회 실패: ${error.message}`);
       }
     }
-  } catch (err) {
-    console.log(`현재가 조회 실패: ${err.message}`);
   }
   
+  // 모든 재시도 실패
+  console.error(`❌ ${stockCode} 현재가 조회 최종 실패 (${maxRetries + 1}번 시도)`);
   return null;
 }
