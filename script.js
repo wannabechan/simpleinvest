@@ -261,7 +261,7 @@ function displayStockCard(data, stockCode) {
         const percentSpan = prevMiddleInRange 
             ? `<span class="middle-change-percent-highlight">${percentText}</span>`
             : percentText;
-        prevMiddleDisplayText += ` <span class="middle-change">(종가 대비 ${percentSpan})</span>`;
+        prevMiddleDisplayText += ` <span class="middle-change">(종가 ${percentSpan})</span>`;
     }
     
     // 우측: 최근 개장일 정보 계산
