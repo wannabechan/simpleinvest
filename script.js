@@ -248,13 +248,20 @@ function displayStockCard(data, stockCode) {
     // 좌측: 최근 개장일 바로 이전의 개장일 정보 계산
     const prevChange = data.prevClose - data.prevOpen;
     const prevChangePercent = data.prevOpen > 0 ? (prevChange / data.prevOpen) * 100 : 0;
+    const prevChangePercentInRange = prevChangePercent >= -2 && prevChangePercent <= -0.5;
+    const prevChangeClass = prevChangePercentInRange ? 'change-highlight' : '';
+    
     const prevMiddle = (data.prevHigh + data.prevLow) / 2;
     const prevMiddleChangePercent = data.prevClose > 0 ? ((prevMiddle - data.prevClose) / data.prevClose) * 100 : null;
-    const prevMiddleClass = (prevMiddleChangePercent >= 0.3 && prevMiddleChangePercent <= 1.2) ? 'middle-highlight' : '';
+    const prevMiddleInRange = prevMiddleChangePercent !== null && prevMiddleChangePercent >= 0.3 && prevMiddleChangePercent <= 1.2;
     let prevMiddleDisplayText = formatPrice(Math.round(prevMiddle));
     if (prevMiddleChangePercent !== null) {
         const sign = prevMiddleChangePercent >= 0 ? '+' : '';
-        prevMiddleDisplayText += ` <span class="middle-change ${prevMiddleClass}">(종가 대비 ${sign}${prevMiddleChangePercent.toFixed(2)}%)</span>`;
+        const percentText = `${sign}${prevMiddleChangePercent.toFixed(2)}%`;
+        const percentSpan = prevMiddleInRange 
+            ? `<span class="middle-change-percent-highlight">${percentText}</span>`
+            : percentText;
+        prevMiddleDisplayText += ` <span class="middle-change">(종가 대비 ${percentSpan})</span>`;
     }
     
     // 우측: 최근 개장일 정보 계산
@@ -270,8 +277,22 @@ function displayStockCard(data, stockCode) {
     }
     
     // 현재가 표시 텍스트 생성
+    // 현재가가 직전 개장일 중간값을 초과하는지 확인
+    const currentPriceExceedsMiddle = data.currentPrice !== null && 
+                                       data.currentPrice !== undefined && 
+                                       data.currentPrice > prevMiddle;
+    const currentPriceClass = currentPriceExceedsMiddle ? 'current-price-highlight' : '';
+    
+    // 직전 개장일 종가 대비 등락폭 계산
+    let currentPriceChangeText = '';
+    if (data.currentPrice !== null && data.currentPrice !== undefined && data.prevClose > 0) {
+        const changeFromPrevClose = ((data.currentPrice - data.prevClose) / data.prevClose) * 100;
+        const sign = changeFromPrevClose >= 0 ? '+' : '';
+        currentPriceChangeText = ` <span class="current-price-change">(${sign}${changeFromPrevClose.toFixed(2)}%)</span>`;
+    }
+    
     const currentPriceText = data.currentPrice !== null && data.currentPrice !== undefined
-        ? ` <span class="current-price">${formatPrice(data.currentPrice)}</span>`
+        ? ` <span class="current-price ${currentPriceClass}">${formatPrice(data.currentPrice)}</span>${currentPriceChangeText}`
         : '';
     
     // 카드 HTML 생성
@@ -299,7 +320,7 @@ function displayStockCard(data, stockCode) {
                     </div>
                     <div class="info-item info-item-full">
                         <span class="info-label">등락</span>
-                        <span class="info-change ${prevChange > 0 ? 'up' : prevChange < 0 ? 'down' : 'equal'}">${formatChange(prevChange, prevChangePercent, prevChangePercent >= -2 && prevChangePercent <= -0.5 ? ' ←' : '')}</span>
+                        <span class="info-change ${prevChange > 0 ? 'up' : prevChange < 0 ? 'down' : 'equal'}">${formatChange(prevChange, prevChangePercent, '', prevChangePercentInRange)}</span>
                     </div>
                     <div class="info-item">
                         <span class="info-label">최고가</span>
@@ -332,7 +353,7 @@ function displayStockCard(data, stockCode) {
                     </div>
                     <div class="info-item info-item-full">
                         <span class="info-label">등락</span>
-                        <span class="info-change ${latestChange > 0 ? 'up' : latestChange < 0 ? 'down' : 'equal'}">${formatChange(latestChange, latestChangePercent, latestChangePercent >= -2 && latestChangePercent <= -0.5 ? ' ←' : '')}</span>
+                        <span class="info-change"></span>
                     </div>
                     <div class="info-item">
                         <span class="info-label">최고가</span>
@@ -344,7 +365,7 @@ function displayStockCard(data, stockCode) {
                     </div>
                     <div class="info-item info-item-full">
                         <span class="info-label">중간값</span>
-                        <span class="info-middle">${latestMiddleDisplayText}</span>
+                        <span class="info-middle"></span>
                     </div>
                 </div>
             </div>
@@ -368,11 +389,16 @@ function formatPrice(price) {
 }
 
 // 변화량 포맷팅 (상승/하락)
-function formatChange(change, changePercent, suffix = '') {
+function formatChange(change, changePercent, suffix = '', highlightPercent = false) {
+    const percentText = `${changePercent.toFixed(2)}%`;
+    const percentSpan = highlightPercent 
+        ? `<span class="change-percent-highlight">${percentText}</span>`
+        : percentText;
+    
     if (change > 0) {
-        return `+${formatPrice(Math.abs(change))} (+${changePercent.toFixed(2)}%)${suffix}`;
+        return `+${formatPrice(Math.abs(change))} (+${percentSpan})${suffix}`;
     } else if (change < 0) {
-        return `${formatPrice(change)} (${changePercent.toFixed(2)}%)${suffix}`;
+        return `${formatPrice(change)} (${percentSpan})${suffix}`;
     } else {
         return `0원 (0.00%)${suffix}`;
     }

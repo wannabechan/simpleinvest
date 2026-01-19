@@ -108,6 +108,19 @@ body {
     margin-left: 8px;
 }
 
+.current-price-highlight {
+    background-color: #fef9c3; /* 노란색 배경 */
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.current-price-change {
+    font-size: 14px;
+    font-weight: 400;
+    color: #5f6368;
+    margin-left: 4px;
+}
+
 .stock-date {
     font-size: 14px;
     color: #5f6368;
@@ -172,6 +185,9 @@ body {
     font-size: 16px;
     font-weight: 500;
     white-space: nowrap;
+    min-height: 1.5em; /* 높이 유지 (텍스트 없을 때도) */
+    display: inline-block;
+    vertical-align: middle;
 }
 
 .info-change.up {
@@ -190,6 +206,9 @@ body {
     font-size: 16px;
     color: #202124;
     font-weight: 400;
+    min-height: 1.5em; /* 높이 유지 (텍스트 없을 때도) */
+    display: inline-block;
+    vertical-align: middle;
 }
 
 .middle-change {
@@ -200,6 +219,20 @@ body {
 .middle-change.middle-highlight {
     color: #ea4335;
     font-weight: 500;
+}
+
+.middle-change-percent-highlight {
+    background-color: #fef9c3; /* 노란색 배경 */
+    padding: 2px 4px;
+    border-radius: 3px;
+    color: #ea4335;
+    font-weight: 500;
+}
+
+.change-percent-highlight {
+    background-color: #fef9c3; /* 노란색 배경 */
+    padding: 2px 4px;
+    border-radius: 3px;
 }
 
 .loading {
@@ -312,56 +345,72 @@ body {
         margin-left: 6px;
     }
     
+    .current-price-highlight {
+        padding: 2px 4px;
+    }
+    
+    .current-price-change {
+        font-size: 12px;
+        margin-left: 3px;
+    }
+    
     .stock-date {
         font-size: 11px;
     }
     
     .info-split-container {
-        grid-template-columns: 1fr;
-        gap: 16px;
+        grid-template-columns: 1fr 1fr; /* 모바일에서도 2컬럼 유지 */
+        gap: 8px; /* 간격 축소 */
+    }
+    
+    .info-column {
+        padding: 8px; /* 패딩 축소 */
     }
     
     .column-header {
-        padding-bottom: 6px;
-        margin-bottom: 8px;
+        padding-bottom: 4px;
+        margin-bottom: 6px;
+        font-size: 10px; /* 헤더 폰트 크기 축소 */
     }
     
     .column-header .stock-date {
-        font-size: 12px;
+        font-size: 10px; /* 날짜 폰트 크기 축소 */
     }
     
     .info-grid {
         grid-template-columns: 1fr 1fr;
-        gap: 8px;
+        gap: 6px; /* 간격 축소 */
     }
     
     .info-item {
-        gap: 3px;
+        gap: 2px; /* 간격 축소 */
     }
     
     .info-item-full {
-        padding: 8px;
+        padding: 6px; /* 패딩 축소 */
     }
     
     .info-label {
-        font-size: 11px;
+        font-size: 9px; /* 레이블 폰트 크기 축소 */
     }
     
     .info-value {
-        font-size: 18px;
+        font-size: 14px; /* 값 폰트 크기 축소 */
     }
     
     .info-change {
-        font-size: 13px;
+        font-size: 10px; /* 등락 폰트 크기 축소 */
+        min-height: 1.5em; /* 높이 유지 (텍스트 없을 때도) */
     }
     
     .info-middle {
-        font-size: 13px;
+        font-size: 10px; /* 중간값 폰트 크기 축소 */
+        min-height: 1.5em; /* 높이 유지 (텍스트 없을 때도) */
     }
     
     .middle-change {
-        font-size: 12px;
-        margin-left: 6px;
+        font-size: 9px; /* 중간값 변화율 폰트 크기 축소 */
+        margin-left: 4px;
     }
     
     .loading,
