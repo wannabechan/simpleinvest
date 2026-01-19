@@ -269,13 +269,18 @@ function displayStockCard(data, stockCode) {
         latestMiddleDisplayText += ` <span class="middle-change ${latestMiddleClass}">(종가 대비 ${sign}${latestMiddleChangePercent.toFixed(2)}%)</span>`;
     }
     
+    // 현재가 표시 텍스트 생성
+    const currentPriceText = data.currentPrice !== null && data.currentPrice !== undefined
+        ? ` <span class="current-price">${formatPrice(data.currentPrice)}</span>`
+        : '';
+    
     // 카드 HTML 생성
     const card = document.createElement('div');
     card.className = 'stock-info';
     card.id = `stock-${stockCode}`;
     card.innerHTML = `
         <div class="info-header">
-            <h2 class="stock-name">${data.name} (${stockCode})</h2>
+            <h2 class="stock-name">${data.name} (${stockCode})${currentPriceText}</h2>
         </div>
         <div class="info-split-container">
             <!-- 좌측: 최근 개장일 바로 이전의 개장일 정보 -->
