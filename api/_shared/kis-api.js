@@ -1,27 +1,68 @@
 // 한국투자증권 API 공통 로직
 
 import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
 
 // 한국투자증권 API 키 (환경변수에서 가져오기)
 // 주의: API 키는 환경변수에서만 가져옵니다. 보안을 위해 기본값은 제거했습니다.
 export const APP_KEY = process.env.KIS_APP_KEY;
 export const APP_SECRET = process.env.KIS_APP_SECRET;
 
-// 토큰 캐싱 (Vercel Serverless Functions에서는 전역 변수가 공유됨)
-// 주의: Vercel Serverless Functions는 Cold Start 시 새 인스턴스가 생성될 수 있음
-// 여러 인스턴스가 동시에 실행되면 각각 토큰을 요청할 수 있음
-// 하지만 같은 인스턴스가 재사용되면 캐시가 유지됨
-// 목표: 1시간 동안 동일 토큰 재사용으로 Rate limit 문제 최소화
-let tokenCache = {
+// 토큰 캐시 파일 경로 (Vercel Serverless Functions는 /tmp 디렉토리에만 쓰기 가능)
+const TOKEN_CACHE_FILE = '/tmp/kis-token-cache.json';
+const TWELVE_HOURS = 12 * 60 * 60 * 1000; // 12시간 (밀리초)
+
+// 메모리 캐시 (파일 읽기 성능 최적화용)
+let memoryCache = {
   token: null,
-  expiresAt: null, // 캐시 만료 시간 (1시간)
-  tokenIssuedAt: null, // 실제 토큰 발급 시간 (실제 토큰 만료 확인용 - 24시간)
-  lastRequestTime: null, // 마지막 토큰 요청 시간 (Rate limit 방지)
-  isRequesting: false // 토큰 요청 중 플래그 (중복 요청 방지)
+  tokenIssuedAt: null,
+  lastFileCheck: null
 };
 
-// 액세스 토큰 발급 (캐싱 포함 + Rate limit 방지)
-// 목표: 같은 인스턴스 내에서 1시간 동안 동일 토큰 재사용
+// 파일에서 토큰 정보 읽기
+function readTokenFromFile() {
+  try {
+    if (fs.existsSync(TOKEN_CACHE_FILE)) {
+      const fileContent = fs.readFileSync(TOKEN_CACHE_FILE, 'utf8');
+      const cacheData = JSON.parse(fileContent);
+      
+      // 메모리 캐시 업데이트
+      memoryCache.token = cacheData.token;
+      memoryCache.tokenIssuedAt = cacheData.tokenIssuedAt;
+      memoryCache.lastFileCheck = Date.now();
+      
+      return cacheData;
+    }
+  } catch (error) {
+    console.log(`토큰 캐시 파일 읽기 실패: ${error.message}`);
+  }
+  return null;
+}
+
+// 파일에 토큰 정보 저장
+function saveTokenToFile(token, tokenIssuedAt) {
+  try {
+    const cacheData = {
+      token: token,
+      tokenIssuedAt: tokenIssuedAt
+    };
+    
+    fs.writeFileSync(TOKEN_CACHE_FILE, JSON.stringify(cacheData, null, 2), 'utf8');
+    
+    // 메모리 캐시 업데이트
+    memoryCache.token = token;
+    memoryCache.tokenIssuedAt = tokenIssuedAt;
+    memoryCache.lastFileCheck = Date.now();
+    
+    console.log(`✅ 토큰 캐시 파일 저장 완료: ${TOKEN_CACHE_FILE}`);
+  } catch (error) {
+    console.error(`토큰 캐시 파일 저장 실패: ${error.message}`);
+  }
+}
+
+// 액세스 토큰 발급 (파일 기반 캐싱)
+// 목표: 12시간 동안 동일 토큰 재사용 (인스턴스 재시작에도 유지)
 export async function getAccessToken() {
   // API 키 확인
   if (!APP_KEY || !APP_SECRET) {
@@ -29,61 +70,44 @@ export async function getAccessToken() {
   }
   
   const now = Date.now();
-  const ONE_HOUR = 60 * 60 * 1000; // 1시간 (밀리초)
-  const TWENTY_THREE_HOURS = 23 * 60 * 60 * 1000; // 23시간 (실제 토큰 만료 체크용)
   
-  // 1. 실제 토큰이 23시간 이내에 발급되었으면 무조건 재사용 (최우선)
-  // 같은 인스턴스 내에서는 1시간 이상이 지나도 토큰 재사용
-  if (tokenCache.token && tokenCache.tokenIssuedAt) {
-    const timeSinceTokenIssued = now - tokenCache.tokenIssuedAt;
-    if (timeSinceTokenIssued < TWENTY_THREE_HOURS) {
-      // 캐시 만료 시간이 지났어도 실제 토큰은 유효하면 재사용
-      if (!tokenCache.expiresAt || now >= tokenCache.expiresAt) {
-        console.log(`✅ 캐시 만료되었지만 실제 토큰은 유효함 (발급 후 ${Math.round(timeSinceTokenIssued / 3600000)}시간 경과) - 토큰 재사용`);
-        // 캐시 만료 시간을 1시간 더 연장하여 계속 재사용
-        tokenCache.expiresAt = now + ONE_HOUR;
-      } else {
-        console.log(`✅ 캐시된 토큰 재사용 (1시간 이내, 발급 후 ${Math.round(timeSinceTokenIssued / 3600000)}시간 경과)`);
-      }
-      return tokenCache.token;
+  // 1. 메모리 캐시에서 토큰 확인 (파일 읽기 최소화)
+  if (memoryCache.token && memoryCache.tokenIssuedAt) {
+    const timeSinceTokenIssued = now - memoryCache.tokenIssuedAt;
+    if (timeSinceTokenIssued < TWELVE_HOURS) {
+      const hoursElapsed = Math.round(timeSinceTokenIssued / 3600000 * 10) / 10;
+      console.log(`✅ 메모리 캐시에서 토큰 재사용 (발급 후 ${hoursElapsed}시간 경과)`);
+      return memoryCache.token;
     }
   }
   
-  // 2. 캐시된 토큰이 있고 캐시 만료 시간(1시간)이 지나지 않았으면 재사용
-  if (tokenCache.token && tokenCache.expiresAt && now < tokenCache.expiresAt) {
-    const timeSinceTokenIssued = tokenCache.tokenIssuedAt 
-      ? Math.round((now - tokenCache.tokenIssuedAt) / 3600000)
-      : 0;
-    console.log(`✅ 캐시된 토큰 재사용 (1시간 이내${timeSinceTokenIssued > 0 ? `, 발급 후 ${timeSinceTokenIssued}시간 경과` : ''})`);
-    return tokenCache.token;
-  }
+  // 2. 파일에서 토큰 정보 읽기
+  const cacheData = readTokenFromFile();
   
-  // 3. Rate limit 방지: 마지막 토큰 요청 후 70초 이내면 캐시된 토큰 재사용
-  if (tokenCache.lastRequestTime && tokenCache.token) {
-    const timeSinceLastRequest = (now - tokenCache.lastRequestTime) / 1000; // 초 단위
-    if (timeSinceLastRequest < 70) { // 70초
-      const remainingSeconds = Math.ceil(70 - timeSinceLastRequest);
-      console.log(`⏳ Rate limit 방지: 마지막 요청 후 ${Math.round(timeSinceLastRequest)}초 경과 (${remainingSeconds}초 후 재시도 가능) - 캐시된 토큰 재사용`);
-      // 캐시 만료 시간 연장
-      tokenCache.expiresAt = Math.max(tokenCache.expiresAt || 0, now + remainingSeconds * 1000);
-      return tokenCache.token;
+  if (cacheData && cacheData.token && cacheData.tokenIssuedAt) {
+    const timeSinceTokenIssued = now - cacheData.tokenIssuedAt;
+    
+    // 12시간이 지나지 않았으면 파일의 토큰 사용
+    if (timeSinceTokenIssued < TWELVE_HOURS) {
+      const hoursElapsed = Math.round(timeSinceTokenIssued / 3600000 * 10) / 10;
+      const remainingHours = Math.round((TWELVE_HOURS - timeSinceTokenIssued) / 3600000 * 10) / 10;
+      console.log(`✅ 파일 캐시에서 토큰 재사용 (발급 후 ${hoursElapsed}시간 경과, ${remainingHours}시간 후 만료)`);
+      
+      // 메모리 캐시 업데이트
+      memoryCache.token = cacheData.token;
+      memoryCache.tokenIssuedAt = cacheData.tokenIssuedAt;
+      memoryCache.lastFileCheck = now;
+      
+      return cacheData.token;
+    } else {
+      const hoursElapsed = Math.round(timeSinceTokenIssued / 3600000 * 10) / 10;
+      console.log(`⏰ 캐시된 토큰 만료 (발급 후 ${hoursElapsed}시간 경과, 12시간 초과) - 새 토큰 발급 필요`);
     }
   }
   
-  // 4. 다른 요청이 이미 진행 중이면 잠시 대기 후 재시도
-  if (tokenCache.isRequesting && tokenCache.token) {
-    console.log('⏳ 다른 요청이 토큰 발급 중... 캐시된 토큰 재사용');
-    // 최대 2초 대기
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    if (tokenCache.token) {
-      return tokenCache.token;
-    }
-  }
-  
+  // 3. 파일에 토큰이 없거나 12시간이 지났으면 새 토큰 발급
   try {
     console.log('🔄 새 토큰 발급 요청 시작');
-    tokenCache.isRequesting = true; // 요청 중 플래그 설정
-    tokenCache.lastRequestTime = now; // 요청 시간 기록
     
     const response = await axios.post(
       'https://openapi.koreainvestment.com:9443/oauth2/tokenP',
@@ -103,48 +127,33 @@ export async function getAccessToken() {
     const accessToken = response.data.access_token;
     const expiresIn = response.data.expires_in || 86400; // 기본 24시간 (초)
     
-    // 토큰 캐싱 (1시간 동안 캐시 유지, 실제 토큰은 24시간 유효)
-    // 목표: 같은 인스턴스에서 1시간 동안은 동일 토큰 재사용
-    // 실제 토큰 발급 시간도 기록하여 23시간까지 재사용 가능하도록 함
-    tokenCache.token = accessToken;
-    tokenCache.expiresAt = now + ONE_HOUR; // 1시간 후 캐시 만료 (같은 인스턴스 내에서)
-    tokenCache.tokenIssuedAt = now; // 실제 토큰 발급 시간 기록 (23시간까지 재사용)
-    tokenCache.isRequesting = false; // 요청 완료
+    // 파일에 토큰 저장 (12시간 동안 재사용 가능)
+    saveTokenToFile(accessToken, now);
     
-    const cacheExpiryTime = new Date(tokenCache.expiresAt).toLocaleTimeString();
     const tokenExpiryHours = Math.round(expiresIn / 3600);
-    console.log(`✅ 토큰 발급 성공 (캐시 만료: ${cacheExpiryTime}, 실제 토큰 만료: 약 ${tokenExpiryHours}시간 후)`);
-    console.log(`📌 같은 인스턴스 내에서 1시간 동안 동일 토큰 재사용 예정`);
+    console.log(`✅ 토큰 발급 성공 (실제 토큰 만료: 약 ${tokenExpiryHours}시간 후)`);
+    console.log(`📌 12시간 동안 동일 토큰 재사용 예정 (파일 캐시: ${TOKEN_CACHE_FILE})`);
+    
     return accessToken;
   } catch (error) {
-    tokenCache.isRequesting = false; // 요청 실패 시 플래그 해제
     const errorDetail = error.response?.data || error.message;
     console.error('❌ 토큰 발급 실패 상세:', JSON.stringify(errorDetail, null, 2));
     
-    // Rate limit 오류인 경우 캐시된 토큰 재사용 시도
+    // Rate limit 오류인 경우 파일 캐시에서 토큰 재사용 시도
     if (error.response?.data?.error_code === 'EGW00133') {
-      console.warn('⚠️ Rate limit 오류 발생 (1분당 1회 제한) - 캐시된 토큰 재사용 시도');
-      if (tokenCache.token) {
-        // 실제 토큰이 아직 유효하면 재사용
-        if (tokenCache.tokenIssuedAt) {
-          const timeSinceTokenIssued = now - tokenCache.tokenIssuedAt;
-          if (timeSinceTokenIssued < TWENTY_THREE_HOURS) {
-            // 캐시 만료 시간을 1시간 더 연장하여 계속 재사용
-            tokenCache.expiresAt = now + ONE_HOUR;
-            console.log(`✅ 캐시된 토큰 재사용 성공 (발급 후 ${Math.round(timeSinceTokenIssued / 3600000)}시간 경과)`);
-            return tokenCache.token;
-          }
+      console.warn('⚠️ Rate limit 오류 발생 (1분당 1회 제한) - 파일 캐시에서 토큰 재사용 시도');
+      
+      if (cacheData && cacheData.token && cacheData.tokenIssuedAt) {
+        const timeSinceTokenIssued = now - cacheData.tokenIssuedAt;
+        // 파일에 저장된 토큰이 있으면 재사용 (12시간 초과여도 최후의 수단)
+        if (timeSinceTokenIssued < 24 * 60 * 60 * 1000) { // 24시간 이내
+          const hoursElapsed = Math.round(timeSinceTokenIssued / 3600000 * 10) / 10;
+          console.log(`✅ 파일 캐시에서 토큰 재사용 성공 (발급 후 ${hoursElapsed}시간 경과, Rate limit 우회)`);
+          return cacheData.token;
         }
-        // 토큰 발급 시간이 없으면 만료 시간을 1분 연장 (임시 조치)
-        tokenCache.expiresAt = Math.max(tokenCache.expiresAt || 0, now + 60000);
-        console.log('✅ 캐시된 토큰 재사용 성공');
-        return tokenCache.token;
       }
-      // 캐시된 토큰이 없으면 사용자 친화적인 메시지
-      const waitTime = tokenCache.lastRequestTime 
-        ? Math.ceil(70 - (now - tokenCache.lastRequestTime) / 1000)
-        : 70;
-      throw new Error(`한국투자증권 API 정책: 토큰 발급은 1분당 1회만 가능합니다. 약 ${waitTime}초 후 재시도 하세요. (토큰은 한 번 발급받으면 24시간 동안 유효합니다)`);
+      
+      throw new Error(`한국투자증권 API 정책: 토큰 발급은 1분당 1회만 가능합니다. 약 70초 후 재시도 하세요. (토큰은 한 번 발급받으면 24시간 동안 유효합니다)`);
     }
     
     throw error;
