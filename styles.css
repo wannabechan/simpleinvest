@@ -106,6 +106,30 @@ body {
     color: #5f6368;
 }
 
+.info-split-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.info-column {
+    display: flex;
+    flex-direction: column;
+}
+
+.column-header {
+    border-bottom: 1px solid #e8eaed;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+    text-align: center;
+}
+
+.column-header .stock-date {
+    font-size: 13px;
+    font-weight: 500;
+    color: #202124;
+}
+
 .info-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -280,8 +304,22 @@ body {
         font-size: 11px;
     }
     
-    .info-grid {
+    .info-split-container {
         grid-template-columns: 1fr;
+        gap: 16px;
+    }
+    
+    .column-header {
+        padding-bottom: 6px;
+        margin-bottom: 8px;
+    }
+    
+    .column-header .stock-date {
+        font-size: 12px;
+    }
+    
+    .info-grid {
+        grid-template-columns: 1fr 1fr;
         gap: 8px;
     }
     

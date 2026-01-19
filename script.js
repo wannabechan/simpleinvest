@@ -223,44 +223,50 @@ function useMockData(stockCode) {
     }
 }
 
-// 주식 데이터 카드 생성 및 표시
+// 주식 데이터 카드 생성 및 표시 (좌우 2분할)
 function displayStockCard(data, stockCode) {
-    // 날짜가 문자열로 오면 Date 객체로 변환
-    let date = data.date || new Date();
-    if (typeof date === 'string') {
-        date = new Date(date);
+    // 최근 개장일 바로 이전의 개장일 정보 처리
+    let prevDate = data.prevDate || new Date();
+    if (typeof prevDate === 'string') {
+        prevDate = new Date(prevDate);
     }
-    // Date 객체가 아닌 경우에도 처리
-    if (!(date instanceof Date) || isNaN(date.getTime())) {
-        date = new Date();
+    if (!(prevDate instanceof Date) || isNaN(prevDate.getTime())) {
+        prevDate = new Date();
     }
-    const formattedDate = formatDate(date);
+    const prevFormattedDate = formatDate(prevDate);
     
-    // 시작가 대비 종가 변화 계산
-    const change = data.close - data.open;
-    const changePercent = (change / data.open) * 100;
+    // 최근 개장일 정보 처리
+    let latestDate = data.latestDate || new Date();
+    if (typeof latestDate === 'string') {
+        latestDate = new Date(latestDate);
+    }
+    if (!(latestDate instanceof Date) || isNaN(latestDate.getTime())) {
+        latestDate = new Date();
+    }
+    const latestFormattedDate = formatDate(latestDate);
     
-    // 최고가와 최저가의 중간값 계산
-    const middle = (data.high + data.low) / 2;
-    
-    // 종가 대비 중간값 변화율 계산: (중간값 - 종가) / 종가 * 100
-    const close = data.close || 0;
-    let middleChangePercent = null;
-    let middleChangeClass = '';
-    
-    if (close > 0) {
-      middleChangePercent = ((middle - close) / close) * 100;
-      // 0.3% 이상 1.2% 이하일 경우 빨간색
-      if (middleChangePercent >= 0.3 && middleChangePercent <= 1.2) {
-        middleChangeClass = 'middle-highlight';
-      }
+    // 좌측: 최근 개장일 바로 이전의 개장일 정보 계산
+    const prevChange = data.prevClose - data.prevOpen;
+    const prevChangePercent = data.prevOpen > 0 ? (prevChange / data.prevOpen) * 100 : 0;
+    const prevMiddle = (data.prevHigh + data.prevLow) / 2;
+    const prevMiddleChangePercent = data.prevClose > 0 ? ((prevMiddle - data.prevClose) / data.prevClose) * 100 : null;
+    const prevMiddleClass = (prevMiddleChangePercent >= 0.3 && prevMiddleChangePercent <= 1.2) ? 'middle-highlight' : '';
+    let prevMiddleDisplayText = formatPrice(Math.round(prevMiddle));
+    if (prevMiddleChangePercent !== null) {
+        const sign = prevMiddleChangePercent >= 0 ? '+' : '';
+        prevMiddleDisplayText += ` <span class="middle-change ${prevMiddleClass}">(종가 대비 ${sign}${prevMiddleChangePercent.toFixed(2)}%)</span>`;
     }
     
-    // 중간값 표시 텍스트 생성
-    let middleDisplayText = formatPrice(Math.round(middle));
-    if (middleChangePercent !== null) {
-      const sign = middleChangePercent >= 0 ? '+' : '';
-      middleDisplayText += ` <span class="middle-change ${middleChangeClass}">(종가 대비 ${sign}${middleChangePercent.toFixed(2)}%)</span>`;
+    // 우측: 최근 개장일 정보 계산
+    const latestChange = data.latestClose - data.latestOpen;
+    const latestChangePercent = data.latestOpen > 0 ? (latestChange / data.latestOpen) * 100 : 0;
+    const latestMiddle = (data.latestHigh + data.latestLow) / 2;
+    const latestMiddleChangePercent = data.latestClose > 0 ? ((latestMiddle - data.latestClose) / data.latestClose) * 100 : null;
+    const latestMiddleClass = (latestMiddleChangePercent >= 0.3 && latestMiddleChangePercent <= 1.2) ? 'middle-highlight' : '';
+    let latestMiddleDisplayText = formatPrice(Math.round(latestMiddle));
+    if (latestMiddleChangePercent !== null) {
+        const sign = latestMiddleChangePercent >= 0 ? '+' : '';
+        latestMiddleDisplayText += ` <span class="middle-change ${latestMiddleClass}">(종가 대비 ${sign}${latestMiddleChangePercent.toFixed(2)}%)</span>`;
     }
     
     // 카드 HTML 생성
@@ -270,32 +276,72 @@ function displayStockCard(data, stockCode) {
     card.innerHTML = `
         <div class="info-header">
             <h2 class="stock-name">${data.name} (${stockCode})</h2>
-            <p class="stock-date">기준일: ${formattedDate}</p>
         </div>
-        <div class="info-grid">
-            <div class="info-item">
-                <span class="info-label">시작가</span>
-                <span class="info-value">${formatPrice(data.open)}</span>
+        <div class="info-split-container">
+            <!-- 좌측: 최근 개장일 바로 이전의 개장일 정보 -->
+            <div class="info-column">
+                <div class="column-header">
+                    <p class="stock-date">${prevFormattedDate}</p>
+                </div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">시작가</span>
+                        <span class="info-value">${formatPrice(data.prevOpen)}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">종가</span>
+                        <span class="info-value">${formatPrice(data.prevClose)}</span>
+                    </div>
+                    <div class="info-item info-item-full">
+                        <span class="info-label">등락</span>
+                        <span class="info-change ${prevChange > 0 ? 'up' : prevChange < 0 ? 'down' : 'equal'}">${formatChange(prevChange, prevChangePercent, prevChangePercent >= -2 && prevChangePercent <= -0.5 ? ' ←' : '')}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">최고가</span>
+                        <span class="info-value">${formatPrice(data.prevHigh)}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">최저가</span>
+                        <span class="info-value">${formatPrice(data.prevLow)}</span>
+                    </div>
+                    <div class="info-item info-item-full">
+                        <span class="info-label">중간값</span>
+                        <span class="info-middle">${prevMiddleDisplayText}</span>
+                    </div>
+                </div>
             </div>
-            <div class="info-item">
-                <span class="info-label">종가</span>
-                <span class="info-value">${formatPrice(data.close)}</span>
-            </div>
-            <div class="info-item info-item-full">
-                <span class="info-label">등락</span>
-                <span class="info-change ${change > 0 ? 'up' : change < 0 ? 'down' : 'equal'}">${formatChange(change, changePercent, changePercent >= -2 && changePercent <= -0.5 ? ' ←' : '')}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">최고가</span>
-                <span class="info-value">${formatPrice(data.high)}</span>
-            </div>
-            <div class="info-item">
-                <span class="info-label">최저가</span>
-                <span class="info-value">${formatPrice(data.low)}</span>
-            </div>
-            <div class="info-item info-item-full">
-                <span class="info-label">중간값</span>
-                <span class="info-middle">${middleDisplayText}</span>
+            
+            <!-- 우측: 최근 개장일 정보 -->
+            <div class="info-column">
+                <div class="column-header">
+                    <p class="stock-date">${latestFormattedDate}</p>
+                </div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">시작가</span>
+                        <span class="info-value">${formatPrice(data.latestOpen)}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">종가</span>
+                        <span class="info-value">${formatPrice(data.latestClose)}</span>
+                    </div>
+                    <div class="info-item info-item-full">
+                        <span class="info-label">등락</span>
+                        <span class="info-change ${latestChange > 0 ? 'up' : latestChange < 0 ? 'down' : 'equal'}">${formatChange(latestChange, latestChangePercent, latestChangePercent >= -2 && latestChangePercent <= -0.5 ? ' ←' : '')}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">최고가</span>
+                        <span class="info-value">${formatPrice(data.latestHigh)}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">최저가</span>
+                        <span class="info-value">${formatPrice(data.latestLow)}</span>
+                    </div>
+                    <div class="info-item info-item-full">
+                        <span class="info-label">중간값</span>
+                        <span class="info-middle">${latestMiddleDisplayText}</span>
+                    </div>
+                </div>
             </div>
         </div>
     `;
