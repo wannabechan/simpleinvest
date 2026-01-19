@@ -2,7 +2,7 @@
 // 경로: /api/stock/[code]
 
 import axios from 'axios';
-import { getAccessToken, getTodayString, getStockName, APP_KEY, APP_SECRET } from '../_shared/kis-api.js';
+import { getAccessToken, getTodayString, getStockName, getCurrentPrice, APP_KEY, APP_SECRET } from '../_shared/kis-api.js';
 
 // 환경변수에서 API 키 가져오기
 // 주의: API 키는 반드시 환경변수에서 설정해야 합니다.
@@ -48,6 +48,9 @@ export default async function handler(req, res) {
     
     // 종목명 가져오기
     const stockName = await getStockName(stockCode, accessToken, KIS_APP_KEY, KIS_APP_SECRET);
+    
+    // 현재가 가져오기
+    const currentPrice = await getCurrentPrice(stockCode, accessToken, KIS_APP_KEY, KIS_APP_SECRET);
     
     // 한국투자증권 일자별 시세 조회 API (타임아웃 및 재시도 포함)
     let response;
@@ -136,6 +139,7 @@ export default async function handler(req, res) {
     
     const result = {
       name: stockName,
+      currentPrice: currentPrice, // 현재가 추가
       // 최근 개장일 바로 이전의 개장일 정보
       prevDate: date,
       prevOpen: parseInt(data.stck_oprc) || 0,
