@@ -231,3 +231,46 @@ export async function getStockName(stockCode, accessToken, appKey, appSecret) {
   
   return stockName;
 }
+
+// 현재가 가져오기
+export async function getCurrentPrice(stockCode, accessToken, appKey, appSecret) {
+  // API 키 확인
+  if (!appKey || !appSecret) {
+    console.warn('API 키가 없어 현재가 조회를 건너뜁니다.');
+    return null;
+  }
+  
+  try {
+    const stockInfoResponse = await axios.get(
+      'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-price',
+      {
+        params: {
+          FID_COND_MRKT_DIV_CODE: 'J',
+          FID_INPUT_ISCD: stockCode
+        },
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'appkey': appKey,
+          'appsecret': appSecret,
+          'tr_id': 'FHKST01010100',
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000 // 30초 타임아웃
+      }
+    );
+    
+    const output = stockInfoResponse.data.output || stockInfoResponse.data.output1;
+    if (output) {
+      // 현재가: stck_prpr (현재가)
+      const currentPrice = parseInt(output.stck_prpr) || null;
+      if (currentPrice !== null) {
+        console.log(`현재가 조회 성공: ${stockCode} - ${currentPrice}`);
+        return currentPrice;
+      }
+    }
+  } catch (err) {
+    console.log(`현재가 조회 실패: ${err.message}`);
+  }
+  
+  return null;
+}
