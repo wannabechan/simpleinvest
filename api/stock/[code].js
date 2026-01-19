@@ -115,26 +115,40 @@ export default async function handler(req, res) {
       });
     }
     
-    // 날짜 파싱 (YYYYMMDD -> Date) - 최근 개장일 바로 이전의 개장일 사용
+    // 날짜 파싱 (YYYYMMDD -> Date) - 최근 개장일 바로 이전의 개장일
     const dateStr = data.stck_bsop_date;
     const year = parseInt(dateStr.substring(0, 4));
     const month = parseInt(dateStr.substring(4, 6)) - 1;
     const day = parseInt(dateStr.substring(6, 8));
     const date = new Date(year, month, day);
     
-    // 전일종가 계산 (현재 기준일의 전일 종가 = 최근 거래일의 종가 또는 현재 데이터의 전일종가 필드 사용)
+    // 최근 개장일 날짜 파싱
+    const latestDateStr = latestData.stck_bsop_date;
+    const latestYear = parseInt(latestDateStr.substring(0, 4));
+    const latestMonth = parseInt(latestDateStr.substring(4, 6)) - 1;
+    const latestDay = parseInt(latestDateStr.substring(6, 8));
+    const latestDate = new Date(latestYear, latestMonth, latestDay);
+    
+    // 전일종가 계산 (최근 개장일 바로 이전의 개장일의 전일 종가 = 최근 거래일의 종가 또는 현재 데이터의 전일종가 필드 사용)
     const prevClose = latestData 
       ? parseInt(latestData.stck_clpr) || 0
       : (parseInt(data.stck_prdy_clpr) || 0);
     
     const result = {
       name: stockName,
-      date: date, // 최근 개장일 바로 이전의 개장일
-      open: parseInt(data.stck_oprc) || 0,
-      close: parseInt(data.stck_clpr) || 0,
-      high: parseInt(data.stck_hgpr) || 0,
-      low: parseInt(data.stck_lwpr) || 0,
-      prevClose: prevClose // 전일종가 추가
+      // 최근 개장일 바로 이전의 개장일 정보
+      prevDate: date,
+      prevOpen: parseInt(data.stck_oprc) || 0,
+      prevClose: parseInt(data.stck_clpr) || 0,
+      prevHigh: parseInt(data.stck_hgpr) || 0,
+      prevLow: parseInt(data.stck_lwpr) || 0,
+      prevPrevClose: prevClose, // 전일종가 추가
+      // 최근 개장일 정보
+      latestDate: latestDate,
+      latestOpen: parseInt(latestData.stck_oprc) || 0,
+      latestClose: parseInt(latestData.stck_clpr) || 0,
+      latestHigh: parseInt(latestData.stck_hgpr) || 0,
+      latestLow: parseInt(latestData.stck_lwpr) || 0
     };
     
     return res.status(200).json(result);
