@@ -1,38 +1,79 @@
 // 한국투자증권 API 공통 로직
 
 import axios from 'axios';
-import { kv } from '@vercel/kv';
+import Redis from 'ioredis';
 
 // 한국투자증권 API 키 (환경변수에서 가져오기)
 // 주의: API 키는 환경변수에서만 가져옵니다. 보안을 위해 기본값은 제거했습니다.
 export const APP_KEY = process.env.KIS_APP_KEY;
 export const APP_SECRET = process.env.KIS_APP_SECRET;
 
-// Vercel KV 키
-const KV_TOKEN_KEY = 'kis-token';
-const KV_TOKEN_ISSUED_AT_KEY = 'kis-token-issued-at';
+// Redis 키
+const REDIS_TOKEN_KEY = 'kis-token';
+const REDIS_TOKEN_ISSUED_AT_KEY = 'kis-token-issued-at';
 const TWELVE_HOURS = 12 * 60 * 60 * 1000; // 12시간 (밀리초)
 
-// 메모리 캐시 (KV 읽기 성능 최적화용)
-let memoryCache = {
-  token: null,
-  tokenIssuedAt: null,
-  lastKvCheck: null
-};
+// Redis 클라이언트 (싱글톤)
+let redisClient = null;
 
-// Vercel KV에서 토큰 정보 읽기
-async function readTokenFromKV() {
-  // 환경변수 확인 (디버깅용)
-  const hasRedisUrl = !!(process.env.REDIS_URL || process.env.KV_URL || process.env.UPSTASH_REDIS_URL);
-  if (!hasRedisUrl) {
+// Redis 클라이언트 초기화
+function getRedisClient() {
+  if (redisClient) {
+    return redisClient;
+  }
+  
+  const redisUrl = process.env.REDIS_URL || process.env.KV_URL || process.env.UPSTASH_REDIS_URL;
+  if (!redisUrl) {
     console.warn('⚠️ Redis 환경변수가 없습니다. REDIS_URL, KV_URL, UPSTASH_REDIS_URL 중 하나가 필요합니다.');
-    console.log(`환경변수 확인: REDIS_URL=${!!process.env.REDIS_URL}, KV_URL=${!!process.env.KV_URL}, UPSTASH_REDIS_URL=${!!process.env.UPSTASH_REDIS_URL}`);
+    return null;
   }
   
   try {
+    redisClient = new Redis(redisUrl, {
+      maxRetriesPerRequest: 3,
+      retryStrategy: (times) => {
+        const delay = Math.min(times * 50, 2000);
+        return delay;
+      },
+      enableReadyCheck: false,
+      lazyConnect: true
+    });
+    
+    redisClient.on('error', (err) => {
+      console.error('❌ Redis 연결 오류:', err.message);
+    });
+    
+    console.log('✅ Redis 클라이언트 초기화 완료');
+    return redisClient;
+  } catch (error) {
+    console.error('❌ Redis 클라이언트 생성 실패:', error.message);
+    return null;
+  }
+}
+
+// 메모리 캐시 (Redis 읽기 성능 최적화용)
+let memoryCache = {
+  token: null,
+  tokenIssuedAt: null,
+  lastRedisCheck: null
+};
+
+// Redis에서 토큰 정보 읽기
+async function readTokenFromRedis() {
+  const client = getRedisClient();
+  if (!client) {
+    return null;
+  }
+  
+  try {
+    // Redis 연결 확인 및 연결
+    if (client.status === 'end' || client.status === 'close') {
+      await client.connect();
+    }
+    
     const [token, tokenIssuedAt] = await Promise.all([
-      kv.get(KV_TOKEN_KEY),
-      kv.get(KV_TOKEN_ISSUED_AT_KEY)
+      client.get(REDIS_TOKEN_KEY),
+      client.get(REDIS_TOKEN_ISSUED_AT_KEY)
     ]);
     
     if (token && tokenIssuedAt) {
@@ -44,15 +85,15 @@ async function readTokenFromKV() {
       // 메모리 캐시 업데이트
       memoryCache.token = cacheData.token;
       memoryCache.tokenIssuedAt = cacheData.tokenIssuedAt;
-      memoryCache.lastKvCheck = Date.now();
+      memoryCache.lastRedisCheck = Date.now();
       
-      console.log(`✅ KV에서 토큰 읽기 성공`);
+      console.log(`✅ Redis에서 토큰 읽기 성공`);
       return cacheData;
     } else {
-      console.log('KV에 저장된 토큰이 없습니다.');
+      console.log('Redis에 저장된 토큰이 없습니다.');
     }
   } catch (error) {
-    console.error(`❌ 토큰 KV 읽기 실패: ${error.message}`);
+    console.error(`❌ 토큰 Redis 읽기 실패: ${error.message}`);
     console.error(`에러 스택:`, error.stack);
     // 환경변수 확인 로그
     console.log(`환경변수 확인: REDIS_URL=${!!process.env.REDIS_URL}, KV_URL=${!!process.env.KV_URL}, UPSTASH_REDIS_URL=${!!process.env.UPSTASH_REDIS_URL}`);
@@ -60,37 +101,43 @@ async function readTokenFromKV() {
   return null;
 }
 
-// Vercel KV에 토큰 정보 저장
-async function saveTokenToKV(token, tokenIssuedAt) {
-  // 환경변수 확인 (디버깅용)
-  const hasRedisUrl = !!(process.env.REDIS_URL || process.env.KV_URL || process.env.UPSTASH_REDIS_URL);
-  if (!hasRedisUrl) {
-    console.warn('⚠️ Redis 환경변수가 없어 KV 저장을 건너뜁니다.');
-    console.log(`환경변수 확인: REDIS_URL=${!!process.env.REDIS_URL}, KV_URL=${!!process.env.KV_URL}, UPSTASH_REDIS_URL=${!!process.env.UPSTASH_REDIS_URL}`);
+// Redis에 토큰 정보 저장
+async function saveTokenToRedis(token, tokenIssuedAt) {
+  const client = getRedisClient();
+  if (!client) {
+    console.warn('⚠️ Redis 클라이언트가 없어 저장을 건너뜁니다.');
     return;
   }
   
   try {
+    // Redis 연결 확인 및 연결
+    if (client.status === 'end' || client.status === 'close') {
+      await client.connect();
+    }
+    
+    // 12시간 TTL 설정 (초 단위)
+    const ttlSeconds = Math.floor(TWELVE_HOURS / 1000);
+    
     await Promise.all([
-      kv.set(KV_TOKEN_KEY, token),
-      kv.set(KV_TOKEN_ISSUED_AT_KEY, tokenIssuedAt.toString())
+      client.set(REDIS_TOKEN_KEY, token, 'EX', ttlSeconds),
+      client.set(REDIS_TOKEN_ISSUED_AT_KEY, tokenIssuedAt.toString(), 'EX', ttlSeconds)
     ]);
     
     // 메모리 캐시 업데이트
     memoryCache.token = token;
     memoryCache.tokenIssuedAt = tokenIssuedAt;
-    memoryCache.lastKvCheck = Date.now();
+    memoryCache.lastRedisCheck = Date.now();
     
-    console.log(`✅ 토큰 KV 저장 완료`);
+    console.log(`✅ 토큰 Redis 저장 완료 (TTL: ${ttlSeconds}초)`);
   } catch (error) {
-    console.error(`❌ 토큰 KV 저장 실패: ${error.message}`);
+    console.error(`❌ 토큰 Redis 저장 실패: ${error.message}`);
     console.error(`에러 스택:`, error.stack);
     // 환경변수 확인 로그
     console.log(`환경변수 확인: REDIS_URL=${!!process.env.REDIS_URL}, KV_URL=${!!process.env.KV_URL}, UPSTASH_REDIS_URL=${!!process.env.UPSTASH_REDIS_URL}`);
   }
 }
 
-// 액세스 토큰 발급 (Vercel KV 기반 캐싱)
+// 액세스 토큰 발급 (Redis 기반 캐싱)
 // 목표: 12시간 동안 동일 토큰 재사용 (모든 인스턴스에서 공유)
 export async function getAccessToken() {
   // API 키 확인
@@ -100,7 +147,7 @@ export async function getAccessToken() {
   
   const now = Date.now();
   
-  // 1. 메모리 캐시에서 토큰 확인 (KV 읽기 최소화)
+  // 1. 메모리 캐시에서 토큰 확인 (Redis 읽기 최소화)
   if (memoryCache.token && memoryCache.tokenIssuedAt) {
     const timeSinceTokenIssued = now - memoryCache.tokenIssuedAt;
     if (timeSinceTokenIssued < TWELVE_HOURS) {
@@ -110,22 +157,22 @@ export async function getAccessToken() {
     }
   }
   
-  // 2. Vercel KV에서 토큰 정보 읽기
-  const cacheData = await readTokenFromKV();
+  // 2. Redis에서 토큰 정보 읽기
+  const cacheData = await readTokenFromRedis();
   
   if (cacheData && cacheData.token && cacheData.tokenIssuedAt) {
     const timeSinceTokenIssued = now - cacheData.tokenIssuedAt;
     
-    // 12시간이 지나지 않았으면 KV의 토큰 사용
+    // 12시간이 지나지 않았으면 Redis의 토큰 사용
     if (timeSinceTokenIssued < TWELVE_HOURS) {
       const hoursElapsed = Math.round(timeSinceTokenIssued / 3600000 * 10) / 10;
       const remainingHours = Math.round((TWELVE_HOURS - timeSinceTokenIssued) / 3600000 * 10) / 10;
-      console.log(`✅ KV 캐시에서 토큰 재사용 (발급 후 ${hoursElapsed}시간 경과, ${remainingHours}시간 후 만료)`);
+      console.log(`✅ Redis 캐시에서 토큰 재사용 (발급 후 ${hoursElapsed}시간 경과, ${remainingHours}시간 후 만료)`);
       
       // 메모리 캐시 업데이트
       memoryCache.token = cacheData.token;
       memoryCache.tokenIssuedAt = cacheData.tokenIssuedAt;
-      memoryCache.lastKvCheck = now;
+      memoryCache.lastRedisCheck = now;
       
       return cacheData.token;
     } else {
@@ -134,7 +181,7 @@ export async function getAccessToken() {
     }
   }
   
-  // 3. KV에 토큰이 없거나 12시간이 지났으면 새 토큰 발급
+  // 3. Redis에 토큰이 없거나 12시간이 지났으면 새 토큰 발급
   try {
     console.log('🔄 새 토큰 발급 요청 시작');
     
@@ -156,28 +203,28 @@ export async function getAccessToken() {
     const accessToken = response.data.access_token;
     const expiresIn = response.data.expires_in || 86400; // 기본 24시간 (초)
     
-    // Vercel KV에 토큰 저장 (12시간 동안 재사용 가능, 모든 인스턴스에서 공유)
-    await saveTokenToKV(accessToken, now);
+    // Redis에 토큰 저장 (12시간 동안 재사용 가능, 모든 인스턴스에서 공유)
+    await saveTokenToRedis(accessToken, now);
     
     const tokenExpiryHours = Math.round(expiresIn / 3600);
     console.log(`✅ 토큰 발급 성공 (실제 토큰 만료: 약 ${tokenExpiryHours}시간 후)`);
-    console.log(`📌 12시간 동안 동일 토큰 재사용 예정 (Vercel KV 캐시)`);
+    console.log(`📌 12시간 동안 동일 토큰 재사용 예정 (Redis 캐시)`);
     
     return accessToken;
   } catch (error) {
     const errorDetail = error.response?.data || error.message;
     console.error('❌ 토큰 발급 실패 상세:', JSON.stringify(errorDetail, null, 2));
     
-    // Rate limit 오류인 경우 KV 캐시에서 토큰 재사용 시도
+    // Rate limit 오류인 경우 Redis 캐시에서 토큰 재사용 시도
     if (error.response?.data?.error_code === 'EGW00133') {
-      console.warn('⚠️ Rate limit 오류 발생 (1분당 1회 제한) - KV 캐시에서 토큰 재사용 시도');
+      console.warn('⚠️ Rate limit 오류 발생 (1분당 1회 제한) - Redis 캐시에서 토큰 재사용 시도');
       
       if (cacheData && cacheData.token && cacheData.tokenIssuedAt) {
         const timeSinceTokenIssued = now - cacheData.tokenIssuedAt;
-        // KV에 저장된 토큰이 있으면 재사용 (12시간 초과여도 최후의 수단)
+        // Redis에 저장된 토큰이 있으면 재사용 (12시간 초과여도 최후의 수단)
         if (timeSinceTokenIssued < 24 * 60 * 60 * 1000) { // 24시간 이내
           const hoursElapsed = Math.round(timeSinceTokenIssued / 3600000 * 10) / 10;
-          console.log(`✅ KV 캐시에서 토큰 재사용 성공 (발급 후 ${hoursElapsed}시간 경과, Rate limit 우회)`);
+          console.log(`✅ Redis 캐시에서 토큰 재사용 성공 (발급 후 ${hoursElapsed}시간 경과, Rate limit 우회)`);
           return cacheData.token;
         }
       }
