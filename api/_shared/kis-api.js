@@ -22,6 +22,13 @@ let memoryCache = {
 
 // Vercel KV에서 토큰 정보 읽기
 async function readTokenFromKV() {
+  // 환경변수 확인 (디버깅용)
+  const hasRedisUrl = !!(process.env.REDIS_URL || process.env.KV_URL || process.env.UPSTASH_REDIS_URL);
+  if (!hasRedisUrl) {
+    console.warn('⚠️ Redis 환경변수가 없습니다. REDIS_URL, KV_URL, UPSTASH_REDIS_URL 중 하나가 필요합니다.');
+    console.log(`환경변수 확인: REDIS_URL=${!!process.env.REDIS_URL}, KV_URL=${!!process.env.KV_URL}, UPSTASH_REDIS_URL=${!!process.env.UPSTASH_REDIS_URL}`);
+  }
+  
   try {
     const [token, tokenIssuedAt] = await Promise.all([
       kv.get(KV_TOKEN_KEY),
@@ -39,16 +46,30 @@ async function readTokenFromKV() {
       memoryCache.tokenIssuedAt = cacheData.tokenIssuedAt;
       memoryCache.lastKvCheck = Date.now();
       
+      console.log(`✅ KV에서 토큰 읽기 성공`);
       return cacheData;
+    } else {
+      console.log('KV에 저장된 토큰이 없습니다.');
     }
   } catch (error) {
-    console.log(`토큰 KV 읽기 실패: ${error.message}`);
+    console.error(`❌ 토큰 KV 읽기 실패: ${error.message}`);
+    console.error(`에러 스택:`, error.stack);
+    // 환경변수 확인 로그
+    console.log(`환경변수 확인: REDIS_URL=${!!process.env.REDIS_URL}, KV_URL=${!!process.env.KV_URL}, UPSTASH_REDIS_URL=${!!process.env.UPSTASH_REDIS_URL}`);
   }
   return null;
 }
 
 // Vercel KV에 토큰 정보 저장
 async function saveTokenToKV(token, tokenIssuedAt) {
+  // 환경변수 확인 (디버깅용)
+  const hasRedisUrl = !!(process.env.REDIS_URL || process.env.KV_URL || process.env.UPSTASH_REDIS_URL);
+  if (!hasRedisUrl) {
+    console.warn('⚠️ Redis 환경변수가 없어 KV 저장을 건너뜁니다.');
+    console.log(`환경변수 확인: REDIS_URL=${!!process.env.REDIS_URL}, KV_URL=${!!process.env.KV_URL}, UPSTASH_REDIS_URL=${!!process.env.UPSTASH_REDIS_URL}`);
+    return;
+  }
+  
   try {
     await Promise.all([
       kv.set(KV_TOKEN_KEY, token),
@@ -62,7 +83,10 @@ async function saveTokenToKV(token, tokenIssuedAt) {
     
     console.log(`✅ 토큰 KV 저장 완료`);
   } catch (error) {
-    console.error(`토큰 KV 저장 실패: ${error.message}`);
+    console.error(`❌ 토큰 KV 저장 실패: ${error.message}`);
+    console.error(`에러 스택:`, error.stack);
+    // 환경변수 확인 로그
+    console.log(`환경변수 확인: REDIS_URL=${!!process.env.REDIS_URL}, KV_URL=${!!process.env.KV_URL}, UPSTASH_REDIS_URL=${!!process.env.UPSTASH_REDIS_URL}`);
   }
 }
 
