@@ -1,68 +1,73 @@
 // 한국투자증권 API 공통 로직
 
 import axios from 'axios';
-import fs from 'fs';
-import path from 'path';
+import { kv } from '@vercel/kv';
 
 // 한국투자증권 API 키 (환경변수에서 가져오기)
 // 주의: API 키는 환경변수에서만 가져옵니다. 보안을 위해 기본값은 제거했습니다.
 export const APP_KEY = process.env.KIS_APP_KEY;
 export const APP_SECRET = process.env.KIS_APP_SECRET;
 
-// 토큰 캐시 파일 경로 (Vercel Serverless Functions는 /tmp 디렉토리에만 쓰기 가능)
-const TOKEN_CACHE_FILE = '/tmp/kis-token-cache.json';
+// Vercel KV 키
+const KV_TOKEN_KEY = 'kis-token';
+const KV_TOKEN_ISSUED_AT_KEY = 'kis-token-issued-at';
 const TWELVE_HOURS = 12 * 60 * 60 * 1000; // 12시간 (밀리초)
 
-// 메모리 캐시 (파일 읽기 성능 최적화용)
+// 메모리 캐시 (KV 읽기 성능 최적화용)
 let memoryCache = {
   token: null,
   tokenIssuedAt: null,
-  lastFileCheck: null
+  lastKvCheck: null
 };
 
-// 파일에서 토큰 정보 읽기
-function readTokenFromFile() {
+// Vercel KV에서 토큰 정보 읽기
+async function readTokenFromKV() {
   try {
-    if (fs.existsSync(TOKEN_CACHE_FILE)) {
-      const fileContent = fs.readFileSync(TOKEN_CACHE_FILE, 'utf8');
-      const cacheData = JSON.parse(fileContent);
+    const [token, tokenIssuedAt] = await Promise.all([
+      kv.get(KV_TOKEN_KEY),
+      kv.get(KV_TOKEN_ISSUED_AT_KEY)
+    ]);
+    
+    if (token && tokenIssuedAt) {
+      const cacheData = {
+        token: token,
+        tokenIssuedAt: parseInt(tokenIssuedAt)
+      };
       
       // 메모리 캐시 업데이트
       memoryCache.token = cacheData.token;
       memoryCache.tokenIssuedAt = cacheData.tokenIssuedAt;
-      memoryCache.lastFileCheck = Date.now();
+      memoryCache.lastKvCheck = Date.now();
       
       return cacheData;
     }
   } catch (error) {
-    console.log(`토큰 캐시 파일 읽기 실패: ${error.message}`);
+    console.log(`토큰 KV 읽기 실패: ${error.message}`);
   }
   return null;
 }
 
-// 파일에 토큰 정보 저장
-function saveTokenToFile(token, tokenIssuedAt) {
+// Vercel KV에 토큰 정보 저장
+async function saveTokenToKV(token, tokenIssuedAt) {
   try {
-    const cacheData = {
-      token: token,
-      tokenIssuedAt: tokenIssuedAt
-    };
-    
-    fs.writeFileSync(TOKEN_CACHE_FILE, JSON.stringify(cacheData, null, 2), 'utf8');
+    await Promise.all([
+      kv.set(KV_TOKEN_KEY, token),
+      kv.set(KV_TOKEN_ISSUED_AT_KEY, tokenIssuedAt.toString())
+    ]);
     
     // 메모리 캐시 업데이트
     memoryCache.token = token;
     memoryCache.tokenIssuedAt = tokenIssuedAt;
-    memoryCache.lastFileCheck = Date.now();
+    memoryCache.lastKvCheck = Date.now();
     
-    console.log(`✅ 토큰 캐시 파일 저장 완료: ${TOKEN_CACHE_FILE}`);
+    console.log(`✅ 토큰 KV 저장 완료`);
   } catch (error) {
-    console.error(`토큰 캐시 파일 저장 실패: ${error.message}`);
+    console.error(`토큰 KV 저장 실패: ${error.message}`);
   }
 }
 
-// 액세스 토큰 발급 (파일 기반 캐싱)
-// 목표: 12시간 동안 동일 토큰 재사용 (인스턴스 재시작에도 유지)
+// 액세스 토큰 발급 (Vercel KV 기반 캐싱)
+// 목표: 12시간 동안 동일 토큰 재사용 (모든 인스턴스에서 공유)
 export async function getAccessToken() {
   // API 키 확인
   if (!APP_KEY || !APP_SECRET) {
@@ -71,7 +76,7 @@ export async function getAccessToken() {
   
   const now = Date.now();
   
-  // 1. 메모리 캐시에서 토큰 확인 (파일 읽기 최소화)
+  // 1. 메모리 캐시에서 토큰 확인 (KV 읽기 최소화)
   if (memoryCache.token && memoryCache.tokenIssuedAt) {
     const timeSinceTokenIssued = now - memoryCache.tokenIssuedAt;
     if (timeSinceTokenIssued < TWELVE_HOURS) {
@@ -81,22 +86,22 @@ export async function getAccessToken() {
     }
   }
   
-  // 2. 파일에서 토큰 정보 읽기
-  const cacheData = readTokenFromFile();
+  // 2. Vercel KV에서 토큰 정보 읽기
+  const cacheData = await readTokenFromKV();
   
   if (cacheData && cacheData.token && cacheData.tokenIssuedAt) {
     const timeSinceTokenIssued = now - cacheData.tokenIssuedAt;
     
-    // 12시간이 지나지 않았으면 파일의 토큰 사용
+    // 12시간이 지나지 않았으면 KV의 토큰 사용
     if (timeSinceTokenIssued < TWELVE_HOURS) {
       const hoursElapsed = Math.round(timeSinceTokenIssued / 3600000 * 10) / 10;
       const remainingHours = Math.round((TWELVE_HOURS - timeSinceTokenIssued) / 3600000 * 10) / 10;
-      console.log(`✅ 파일 캐시에서 토큰 재사용 (발급 후 ${hoursElapsed}시간 경과, ${remainingHours}시간 후 만료)`);
+      console.log(`✅ KV 캐시에서 토큰 재사용 (발급 후 ${hoursElapsed}시간 경과, ${remainingHours}시간 후 만료)`);
       
       // 메모리 캐시 업데이트
       memoryCache.token = cacheData.token;
       memoryCache.tokenIssuedAt = cacheData.tokenIssuedAt;
-      memoryCache.lastFileCheck = now;
+      memoryCache.lastKvCheck = now;
       
       return cacheData.token;
     } else {
@@ -105,7 +110,7 @@ export async function getAccessToken() {
     }
   }
   
-  // 3. 파일에 토큰이 없거나 12시간이 지났으면 새 토큰 발급
+  // 3. KV에 토큰이 없거나 12시간이 지났으면 새 토큰 발급
   try {
     console.log('🔄 새 토큰 발급 요청 시작');
     
@@ -127,28 +132,28 @@ export async function getAccessToken() {
     const accessToken = response.data.access_token;
     const expiresIn = response.data.expires_in || 86400; // 기본 24시간 (초)
     
-    // 파일에 토큰 저장 (12시간 동안 재사용 가능)
-    saveTokenToFile(accessToken, now);
+    // Vercel KV에 토큰 저장 (12시간 동안 재사용 가능, 모든 인스턴스에서 공유)
+    await saveTokenToKV(accessToken, now);
     
     const tokenExpiryHours = Math.round(expiresIn / 3600);
     console.log(`✅ 토큰 발급 성공 (실제 토큰 만료: 약 ${tokenExpiryHours}시간 후)`);
-    console.log(`📌 12시간 동안 동일 토큰 재사용 예정 (파일 캐시: ${TOKEN_CACHE_FILE})`);
+    console.log(`📌 12시간 동안 동일 토큰 재사용 예정 (Vercel KV 캐시)`);
     
     return accessToken;
   } catch (error) {
     const errorDetail = error.response?.data || error.message;
     console.error('❌ 토큰 발급 실패 상세:', JSON.stringify(errorDetail, null, 2));
     
-    // Rate limit 오류인 경우 파일 캐시에서 토큰 재사용 시도
+    // Rate limit 오류인 경우 KV 캐시에서 토큰 재사용 시도
     if (error.response?.data?.error_code === 'EGW00133') {
-      console.warn('⚠️ Rate limit 오류 발생 (1분당 1회 제한) - 파일 캐시에서 토큰 재사용 시도');
+      console.warn('⚠️ Rate limit 오류 발생 (1분당 1회 제한) - KV 캐시에서 토큰 재사용 시도');
       
       if (cacheData && cacheData.token && cacheData.tokenIssuedAt) {
         const timeSinceTokenIssued = now - cacheData.tokenIssuedAt;
-        // 파일에 저장된 토큰이 있으면 재사용 (12시간 초과여도 최후의 수단)
+        // KV에 저장된 토큰이 있으면 재사용 (12시간 초과여도 최후의 수단)
         if (timeSinceTokenIssued < 24 * 60 * 60 * 1000) { // 24시간 이내
           const hoursElapsed = Math.round(timeSinceTokenIssued / 3600000 * 10) / 10;
-          console.log(`✅ 파일 캐시에서 토큰 재사용 성공 (발급 후 ${hoursElapsed}시간 경과, Rate limit 우회)`);
+          console.log(`✅ KV 캐시에서 토큰 재사용 성공 (발급 후 ${hoursElapsed}시간 경과, Rate limit 우회)`);
           return cacheData.token;
         }
       }
