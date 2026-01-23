@@ -173,8 +173,8 @@ export default async function handler(req, res) {
         // 직전 개장일의 중간값 계산
         const prevMiddle = (parseInt(prevData.stck_hgpr) + parseInt(prevData.stck_lwpr)) / 2;
         
-        // 조건 체크: 분봉 데이터로 조건 확인
-        let showGreenDot = false;
+        // 조건 체크: 분봉 데이터로 조건 확인 (각 조건이 맞을 때마다 카운트 증가)
+        let greenDotCount = 0;
         try {
           // 최근 개장일 분봉 데이터 조회 (9:30~10:00)
           const latestMinuteData = await getMinuteData(stockCode, latestDateStr, accessToken, KIS_APP_KEY, KIS_APP_SECRET);
@@ -195,6 +195,9 @@ export default async function handler(req, res) {
                 }
               }
             }
+            if (condition1) {
+              greenDotCount++;
+            }
             
             // 조건 2: 최근 개장일의 9:50am ~ 10:00am 시간 사이의 가격 변동이 직전 개장일의 중간값 이하로 내려간 적이 없는지
             let condition2 = true;
@@ -207,6 +210,9 @@ export default async function handler(req, res) {
                   break;
                 }
               }
+            }
+            if (condition2) {
+              greenDotCount++;
             }
             
             // 조건 3: 최근 개장일의 9:30am ~ 10:00am 시간 사이의 누적 거래량이 직전일의 9:30am ~ 10:00am 시간 사이의 누적 거래량 이상인지
@@ -227,12 +233,12 @@ export default async function handler(req, res) {
             }
             
             const condition3 = latestVolume >= prevVolume;
+            if (condition3) {
+              greenDotCount++;
+            }
             
-            // 모든 조건이 만족되면 초록색 동그라미 표시
-            showGreenDot = condition1 && condition2 && condition3;
-            
-            if (showGreenDot) {
-              console.log(`✅ ${stockCode} 초록색 동그라미 조건 만족`);
+            if (greenDotCount > 0) {
+              console.log(`✅ ${stockCode} 초록색 동그라미 조건 만족: ${greenDotCount}개`);
             }
           }
         } catch (error) {
@@ -242,7 +248,7 @@ export default async function handler(req, res) {
         results[stockCode] = {
           name: stockName,
           currentPrice: currentPrice, // 현재가 추가
-          showGreenDot: showGreenDot, // 초록색 동그라미 표시 여부
+          greenDotCount: greenDotCount, // 초록색 동그라미 개수 (0~3)
           // 최근 개장일 바로 이전의 개장일 정보
           prevDate: date,
           prevOpen: parseInt(prevData.stck_oprc) || 0,
