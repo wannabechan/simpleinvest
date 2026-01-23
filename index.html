@@ -26,7 +26,12 @@
         
         <div id="stocksContainer" class="stocks-container"></div>
         
-        <div id="loading" class="loading hidden">데이터를 불러오는 중...</div>
+        <div id="loading" class="loading hidden">
+            <div class="progress-container">
+                <div id="progressBar" class="progress-bar" style="width: 0%"></div>
+            </div>
+            <div class="loading-text">데이터를 불러오는 중... <span id="progressPercent">0%</span></div>
+        </div>
         <div id="error" class="error hidden">
             <div id="errorMessage"></div>
             <button id="refreshButton" class="refresh-button hidden">재시도</button>

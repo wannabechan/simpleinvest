@@ -4,6 +4,8 @@ const loading = document.getElementById('loading');
 const error = document.getElementById('error');
 const errorMessage = document.getElementById('errorMessage');
 const refreshButton = document.getElementById('refreshButton');
+const progressBar = document.getElementById('progressBar');
+const progressPercent = document.getElementById('progressPercent');
 
 // 카운트다운 관련 변수
 let countdownTimer = null;
@@ -98,6 +100,17 @@ async function fetchStockData(stockCode, retryCount = 0, progressCallback = null
     }
 }
 
+// 프로그레스 바 업데이트 함수
+function updateProgress(percent) {
+    if (progressBar) {
+        progressBar.style.width = `${percent}%`;
+    }
+    const progressPercentElement = document.getElementById('progressPercent');
+    if (progressPercentElement) {
+        progressPercentElement.textContent = `${percent}%`;
+    }
+}
+
 // 모든 종목 데이터를 가져오는 함수 (배치 API 사용 - 동일 토큰 보장)
 async function fetchAllStocks() {
     const stockList = getStockList();
@@ -111,16 +124,32 @@ async function fetchAllStocks() {
     stocksContainer.innerHTML = '';
     error.classList.add('hidden');
     loading.classList.remove('hidden');
-    loading.textContent = `데이터를 불러오는 중... (${stockList.length}개 종목)`;
+    
+    // 프로그레스 바 초기화
+    updateProgress(0);
     
     try {
         // 종목 코드 목록 생성
         const stockCodes = stockList.map(stock => stock.code).join(',');
         
+        // 프로그레스: API 요청 시작
+        updateProgress(10);
+        
         // 배치 API 호출 (모든 종목을 한 번에 요청 - 동일 토큰 사용)
         const apiUrl = `${API_BASE_URL}/api/stocks?codes=${stockCodes}`;
         
+        // 프로그레스: API 응답 대기 중 (점진적으로 증가)
+        const progressInterval = setInterval(() => {
+            const currentProgress = parseInt(progressBar.style.width) || 10;
+            if (currentProgress < 80) {
+                updateProgress(Math.min(currentProgress + 5, 80));
+            }
+        }, 200);
+        
         const response = await fetch(apiUrl);
+        
+        clearInterval(progressInterval);
+        updateProgress(85);
         
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
@@ -128,12 +157,14 @@ async function fetchAllStocks() {
         }
         
         const data = await response.json();
-        
-        // 로딩 숨기기
-        loading.classList.add('hidden');
+        updateProgress(90);
         
         // 결과 확인
         if (data.success === 0) {
+            updateProgress(100);
+            setTimeout(() => {
+                loading.classList.add('hidden');
+            }, 300);
             showError('모든 종목 정보를 불러오는데 실패했습니다.');
             return;
         }
@@ -154,11 +185,21 @@ async function fetchAllStocks() {
             }
         });
         
+        updateProgress(100);
+        
+        // 로딩 숨기기 (약간의 딜레이 후)
+        setTimeout(() => {
+            loading.classList.add('hidden');
+        }, 300);
+        
         console.log(`✅ 배치 조회 완료: 성공 ${data.success}개, 실패 ${data.failed}개`);
         
     } catch (err) {
         console.error('배치 API 호출 실패:', err);
-        loading.classList.add('hidden');
+        updateProgress(100);
+        setTimeout(() => {
+            loading.classList.add('hidden');
+        }, 300);
         
         // 에러 메시지 표시
         let errorMsg = '주식 정보를 불러오는 중 오류가 발생했습니다.';
