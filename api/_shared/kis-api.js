@@ -311,10 +311,7 @@ export const stockNameMap = {
   '000660': 'SK하이닉스',
   '005380': '현대차',
   '207940': '삼성바이오로직스',
-  '329180': 'HD현대중공업',
-  '012450': '한화에어로스페이스',
-  '034020': '두산에너빌리티',
-  '373220': 'LG에너지솔루션'
+  '006400': '삼성SDI'
 };
 
 // 종목명이 유효한지 확인하는 함수
@@ -450,4 +447,77 @@ export async function getCurrentPrice(stockCode, accessToken, appKey, appSecret)
   // 모든 재시도 실패
   console.error(`❌ ${stockCode} 현재가 조회 최종 실패 (${maxRetries + 1}번 시도)`);
   return null;
+}
+
+// 분봉 데이터 가져오기 (9:30~10:00 구간)
+export async function getMinuteData(stockCode, date, accessToken, appKey, appSecret) {
+  // API 키 확인
+  if (!appKey || !appSecret) {
+    console.warn('API 키가 없어 분봉 데이터 조회를 건너뜁니다.');
+    return null;
+  }
+  
+  try {
+    // 날짜를 YYYYMMDD 형식으로 변환
+    const dateStr = typeof date === 'string' ? date : 
+                    date instanceof Date ? getTodayString() : 
+                    getTodayString();
+    
+    const maxRetries = 2;
+    let lastError;
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        // 한국투자증권 분봉 차트 조회 API
+        const response = await axios.get(
+          'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice',
+          {
+            params: {
+              FID_COND_MRKT_DIV_CODE: 'J',
+              FID_INPUT_ISCD: stockCode,
+              FID_INPUT_HOUR_1: '0930', // 시작 시간 (9:30)
+              FID_INPUT_HOUR_2: '1000', // 종료 시간 (10:00)
+              FID_CHART_DIV_CODE: 'M', // 분봉
+              FID_CHART_INTER: '1', // 1분봉
+              FID_ORG_ADJ_PRC: '0' // 수정주가 미반영
+            },
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'appkey': appKey,
+              'appsecret': appSecret,
+              'tr_id': 'FHKST03010200',
+              'Content-Type': 'application/json'
+            },
+            timeout: 30000
+          }
+        );
+        
+        if (response.data.output && response.data.output.length > 0) {
+          return response.data.output;
+        }
+        return null;
+      } catch (error) {
+        lastError = error;
+        const isNetworkError = error.code === 'ECONNRESET' || 
+                              error.code === 'ETIMEDOUT' ||
+                              error.code === 'ENOTFOUND' ||
+                              error.message?.includes('socket hang up') ||
+                              error.message?.includes('timeout');
+        
+        if (isNetworkError && attempt < maxRetries) {
+          const delay = (attempt + 1) * 2000;
+          console.log(`⚠️ ${stockCode} 분봉 데이터 조회 네트워크 오류 (${error.message}). ${delay/1000}초 후 재시도... (${attempt + 1}/${maxRetries})`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          console.error(`❌ ${stockCode} 분봉 데이터 조회 실패: ${error.message}`);
+          break;
+        }
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`❌ ${stockCode} 분봉 데이터 조회 최종 실패: ${error.message}`);
+    return null;
+  }
 }
