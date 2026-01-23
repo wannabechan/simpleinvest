@@ -245,6 +245,66 @@ export function getTodayString() {
   return `${year}${month}${day}`;
 }
 
+// 직전 개장일 데이터 Redis 캐시 키 생성
+function getPrevDataCacheKey(stockCode, today) {
+  return `prevData:${today}:${stockCode}`;
+}
+
+// 직전 개장일 데이터 Redis에서 읽기 (오늘이 바뀌기 전까지 캐시 사용)
+export async function getPrevDataFromCache(stockCode, today) {
+  const client = getRedisClient();
+  if (!client) {
+    return null;
+  }
+  
+  try {
+    if (client.status === 'end' || client.status === 'close') {
+      await client.connect();
+    }
+    
+    const cacheKey = getPrevDataCacheKey(stockCode, today);
+    const cachedData = await client.get(cacheKey);
+    
+    if (cachedData) {
+      const parsedData = JSON.parse(cachedData);
+      console.log(`✅ 직전 개장일 데이터 캐시 사용: ${stockCode} (${today})`);
+      return parsedData;
+    }
+  } catch (error) {
+    console.log(`직전 개장일 데이터 캐시 읽기 실패: ${error.message}`);
+  }
+  
+  return null;
+}
+
+// 직전 개장일 데이터 Redis에 저장 (오늘 날짜 기준, 자정까지 유효)
+export async function savePrevDataToCache(stockCode, today, prevData) {
+  const client = getRedisClient();
+  if (!client) {
+    return;
+  }
+  
+  try {
+    if (client.status === 'end' || client.status === 'close') {
+      await client.connect();
+    }
+    
+    const cacheKey = getPrevDataCacheKey(stockCode, today);
+    
+    // 자정까지 남은 시간 계산 (초 단위)
+    const now = new Date();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+    const ttlSeconds = Math.floor((tomorrow - now) / 1000);
+    
+    await client.set(cacheKey, JSON.stringify(prevData), 'EX', ttlSeconds);
+    console.log(`✅ 직전 개장일 데이터 캐시 저장: ${stockCode} (TTL: ${Math.floor(ttlSeconds / 3600)}시간)`);
+  } catch (error) {
+    console.error(`직전 개장일 데이터 캐시 저장 실패: ${error.message}`);
+  }
+}
+
 // 종목명 매핑
 export const stockNameMap = {
   '005930': '삼성전자',
@@ -264,10 +324,16 @@ export function isValidStockName(name) {
   return /[가-힣]/.test(name); // 한글이 포함되어 있어야 함
 }
 
-// 종목명 가져오기
+// 종목명 가져오기 (최적화: 매핑이 있으면 API 호출 생략)
 export async function getStockName(stockCode, accessToken, appKey, appSecret) {
-  // 매핑 우선 사용
-  let stockName = stockNameMap[stockCode] || '알 수 없음';
+  // 매핑이 있으면 바로 반환 (API 호출 생략)
+  if (stockNameMap[stockCode]) {
+    console.log(`✅ 종목명 매핑 사용: ${stockNameMap[stockCode]} (API 호출 생략)`);
+    return stockNameMap[stockCode];
+  }
+  
+  // 매핑이 없는 경우에만 API 호출
+  let stockName = '알 수 없음';
   
   // API 키 확인
   if (!appKey || !appSecret) {
@@ -311,12 +377,6 @@ export async function getStockName(stockCode, accessToken, appKey, appSecret) {
     }
   } catch (err) {
     console.log(`종목명 조회 실패, 매핑 사용: ${stockName}`);
-  }
-  
-  // 최종적으로 매핑이 있으면 매핑 사용 (안전장치)
-  if (stockNameMap[stockCode] && !isValidStockName(stockName)) {
-    stockName = stockNameMap[stockCode];
-    console.log(`최종 매핑 종목명 사용: ${stockName}`);
   }
   
   return stockName;
