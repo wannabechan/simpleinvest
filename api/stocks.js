@@ -2,7 +2,7 @@
 // 경로: /api/stocks?codes=005930,000660,005380
 
 import axios from 'axios';
-import { getAccessToken, getTodayString, getStockName, getCurrentPrice, APP_KEY, APP_SECRET } from './_shared/kis-api.js';
+import { getAccessToken, getTodayString, getStockName, getCurrentPrice, getPrevDataFromCache, savePrevDataToCache, APP_KEY, APP_SECRET } from './_shared/kis-api.js';
 
 // 환경변수에서 API 키 가져오기
 const KIS_APP_KEY = process.env.KIS_APP_KEY || APP_KEY;
@@ -60,12 +60,24 @@ export default async function handler(req, res) {
     
     for (const stockCode of stockCodes) {
       try {
-        // 종목명 가져오기
+        // 종목명 가져오기 (최적화: 매핑이 있으면 API 호출 생략)
         const stockName = await getStockName(stockCode, accessToken, KIS_APP_KEY, KIS_APP_SECRET);
         
         // 현재가 가져오기
         const currentPrice = await getCurrentPrice(stockCode, accessToken, KIS_APP_KEY, KIS_APP_SECRET);
         
+        // 직전 개장일 데이터 캐시 확인 (오늘이 바뀌기 전까지 캐시 사용)
+        let cachedPrevData = await getPrevDataFromCache(stockCode, today);
+        let prevData = null;
+        let latestData = null;
+        
+        if (cachedPrevData) {
+          // 캐시에서 직전 개장일 데이터만 사용 (최근 개장일은 실시간이므로 API로 조회)
+          prevData = cachedPrevData.prevData;
+          console.log(`✅ ${stockCode} 직전 개장일 데이터 캐시 사용 (API 호출 생략)`);
+        }
+        
+        // 최근 개장일 데이터는 항상 최신 조회 (실시간 데이터)
         // 한국투자증권 일자별 시세 조회 API (타임아웃 및 재시도 포함)
         let response;
         const maxRetries = 2; // 최대 2번 재시도
@@ -120,18 +132,27 @@ export default async function handler(req, res) {
         }
         
         // 최근 거래일 데이터 (첫 번째 항목이 가장 최근)
-        const latestData = response.data.output[0];
-        // 최근 개장일 바로 이전의 개장일 데이터 (두 번째 항목)
-        const data = response.data.output[1];
+        latestData = response.data.output[0];
         
-        // 최근 개장일 바로 이전의 개장일이 없으면 에러
-        if (!data) {
-          errors[stockCode] = '최근 개장일 바로 이전의 개장일 데이터를 찾을 수 없습니다.';
-          continue;
+        // 캐시에 직전 개장일 데이터가 없으면 API 응답에서 가져오기
+        if (!prevData) {
+          // 최근 개장일 바로 이전의 개장일 데이터 (두 번째 항목)
+          prevData = response.data.output[1];
+          
+          // 최근 개장일 바로 이전의 개장일이 없으면 에러
+          if (!prevData) {
+            errors[stockCode] = '최근 개장일 바로 이전의 개장일 데이터를 찾을 수 없습니다.';
+            continue;
+          }
+          
+          // 직전 개장일 데이터를 캐시에 저장 (오늘 날짜 기준)
+          await savePrevDataToCache(stockCode, today, {
+            prevData: prevData
+          });
         }
         
         // 날짜 파싱 (YYYYMMDD -> Date) - 최근 개장일 바로 이전의 개장일
-        const dateStr = data.stck_bsop_date;
+        const dateStr = prevData.stck_bsop_date;
         const year = parseInt(dateStr.substring(0, 4));
         const month = parseInt(dateStr.substring(4, 6)) - 1;
         const day = parseInt(dateStr.substring(6, 8));
@@ -147,17 +168,17 @@ export default async function handler(req, res) {
         // 전일종가 계산 (최근 개장일 바로 이전의 개장일의 전일 종가 = 최근 거래일의 종가 또는 현재 데이터의 전일종가 필드 사용)
         const prevClose = latestData 
           ? parseInt(latestData.stck_clpr) || 0
-          : (parseInt(data.stck_prdy_clpr) || 0);
+          : (parseInt(prevData.stck_prdy_clpr) || 0);
         
         results[stockCode] = {
           name: stockName,
           currentPrice: currentPrice, // 현재가 추가
           // 최근 개장일 바로 이전의 개장일 정보
           prevDate: date,
-          prevOpen: parseInt(data.stck_oprc) || 0,
-          prevClose: parseInt(data.stck_clpr) || 0,
-          prevHigh: parseInt(data.stck_hgpr) || 0,
-          prevLow: parseInt(data.stck_lwpr) || 0,
+          prevOpen: parseInt(prevData.stck_oprc) || 0,
+          prevClose: parseInt(prevData.stck_clpr) || 0,
+          prevHigh: parseInt(prevData.stck_hgpr) || 0,
+          prevLow: parseInt(prevData.stck_lwpr) || 0,
           prevPrevClose: prevClose, // 전일종가 추가
           // 최근 개장일 정보
           latestDate: latestDate,
