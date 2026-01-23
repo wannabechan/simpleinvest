@@ -111,6 +111,11 @@ body {
     border-radius: 50%;
     display: inline-block;
     flex-shrink: 0;
+    margin-left: 4px;
+}
+
+.green-dot:first-of-type {
+    margin-left: 8px;
 }
 
 .current-price {
@@ -378,6 +383,11 @@ body {
     .green-dot {
         width: 10px;
         height: 10px;
+        margin-left: 3px;
+    }
+    
+    .green-dot:first-of-type {
+        margin-left: 6px;
     }
     
     .current-price {

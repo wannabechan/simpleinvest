@@ -358,8 +358,9 @@ function displayStockCard(data, stockCode) {
         ? ` <span class="current-price ${currentPriceClass}">${formatPrice(data.currentPrice)}</span>${currentPriceChangeText}`
         : '';
     
-    // 초록색 동그라미 표시 여부
-    const greenDot = data.showGreenDot ? '<span class="green-dot"></span>' : '';
+    // 초록색 동그라미 표시 (조건이 맞을 때마다 1개씩 표시, 최대 3개)
+    const greenDotCount = data.greenDotCount || 0;
+    const greenDots = '<span class="green-dot"></span>'.repeat(greenDotCount);
     
     // 카드 HTML 생성
     const card = document.createElement('div');
@@ -367,7 +368,7 @@ function displayStockCard(data, stockCode) {
     card.id = `stock-${stockCode}`;
     card.innerHTML = `
         <div class="info-header">
-            <h2 class="stock-name">${data.name}${greenDot}${currentPriceText}</h2>
+            <h2 class="stock-name">${data.name}${greenDots}${currentPriceText}</h2>
         </div>
         <div class="info-split-container">
             <!-- 좌측: 최근 개장일 바로 이전의 개장일 정보 -->
