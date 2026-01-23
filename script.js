@@ -277,10 +277,15 @@ function displayStockCard(data, stockCode) {
     }
     
     // 현재가 표시 텍스트 생성
-    // 현재가가 직전 개장일 중간값을 초과하는지 확인
-    const currentPriceExceedsMiddle = data.currentPrice !== null && 
-                                       data.currentPrice !== undefined && 
-                                       data.currentPrice > prevMiddle;
+    // 현재가가 직전 개장일 중간값을 +0.15% ~ +0.6% 범위 내로 초과하는지 확인
+    const currentPriceExceedsMiddlePercent = data.currentPrice !== null && 
+                                              data.currentPrice !== undefined && 
+                                              prevMiddle > 0
+                                              ? ((data.currentPrice - prevMiddle) / prevMiddle) * 100
+                                              : null;
+    const currentPriceExceedsMiddle = currentPriceExceedsMiddlePercent !== null &&
+                                       currentPriceExceedsMiddlePercent >= 0.15 &&
+                                       currentPriceExceedsMiddlePercent <= 0.6;
     const currentPriceClass = currentPriceExceedsMiddle ? 'current-price-highlight' : '';
     
     // 직전 개장일 종가 대비 등락폭 계산
