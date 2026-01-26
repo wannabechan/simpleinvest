@@ -455,7 +455,9 @@ function displayStockCard(data, stockCode) {
     stocksContainer.appendChild(card);
     
     // 로그 업데이트 (비동기, await 없이 실행)
-    updateLog(stockCode, latestDate, condition1, condition2, condition3).catch(err => {
+    const priceAt11am = data.priceAt11am !== null && data.priceAt11am !== undefined ? data.priceAt11am : null;
+    const closePrice = data.closePrice || data.latestClose || 0;
+    updateLog(stockCode, latestDate, condition1, condition2, condition3, priceAt11am, closePrice).catch(err => {
         console.error(`로그 업데이트 실패 (${stockCode}):`, err);
     });
 }
@@ -495,7 +497,7 @@ async function getLogData(stockCode) {
 }
 
 // Redis에 로그 데이터 저장 (API 호출)
-async function saveLogData(stockCode, date, condition1, condition2, condition3) {
+async function saveLogData(stockCode, date, condition1, condition2, condition3, priceAt11am, closePrice) {
     try {
         const apiUrl = `${API_BASE_URL}/api/logs/${stockCode}`;
         const response = await fetch(apiUrl, {
@@ -507,7 +509,9 @@ async function saveLogData(stockCode, date, condition1, condition2, condition3) 
                 date: date,
                 condition1: condition1,
                 condition2: condition2,
-                condition3: condition3
+                condition3: condition3,
+                priceAt11am: priceAt11am,
+                closePrice: closePrice
             })
         });
         
@@ -525,7 +529,7 @@ async function saveLogData(stockCode, date, condition1, condition2, condition3) 
 }
 
 // 로그 업데이트 (오후 5시 이후에만 기록)
-async function updateLog(stockCode, tradingDate, condition1, condition2, condition3) {
+async function updateLog(stockCode, tradingDate, condition1, condition2, condition3, priceAt11am, closePrice) {
     const now = new Date();
     const currentHour = now.getHours();
     
@@ -555,7 +559,7 @@ async function updateLog(stockCode, tradingDate, condition1, condition2, conditi
     }
     
     // Redis에 저장
-    await saveLogData(stockCode, dateStr, condition1, condition2, condition3);
+    await saveLogData(stockCode, dateStr, condition1, condition2, condition3, priceAt11am, closePrice);
     
     // 로그창 업데이트
     await displayLog(stockCode);
@@ -582,10 +586,16 @@ async function displayLog(stockCode) {
             <span class="green-dot ${entry.condition2 ? 'filled' : ''}"></span>
             <span class="green-dot ${entry.condition3 ? 'filled' : ''}"></span>
         `;
+        const priceAt11amText = entry.priceAt11am !== null && entry.priceAt11am !== undefined 
+            ? formatPrice(entry.priceAt11am) 
+            : '-';
+        const closePriceText = entry.closePrice ? formatPrice(entry.closePrice) : '-';
         const borderBottom = index < logData.length - 1 ? 'border-bottom: 1px solid #e8eaed;' : '';
         return `<div style="margin-bottom: 8px; padding: 4px 0; ${borderBottom}">
             <span style="color: #5f6368; font-size: 12px; margin-right: 12px;">${entry.date}</span>
-            <span style="display: inline-flex; align-items: center; gap: 4px;">${greenDots}</span>
+            <span style="display: inline-flex; align-items: center; gap: 4px; margin-right: 12px;">${greenDots}</span>
+            <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">11am: ${priceAt11amText}</span>
+            <span style="color: #5f6368; font-size: 12px;">종가: ${closePriceText}</span>
         </div>`;
     }).join('');
     
