@@ -2,7 +2,7 @@
 // 경로: /api/stocks?codes=005930,000660,005380
 
 import axios from 'axios';
-import { getAccessToken, getTodayString, getStockName, getCurrentPrice, getPrevDataFromCache, savePrevDataToCache, getMinuteData, APP_KEY, APP_SECRET } from './_shared/kis-api.js';
+import { getAccessToken, getTodayString, getStockName, getCurrentPrice, getPrevDataFromCache, savePrevDataToCache, getMinuteData, getRedisClient, APP_KEY, APP_SECRET } from './_shared/kis-api.js';
 
 // 환경변수에서 API 키 가져오기
 const KIS_APP_KEY = process.env.KIS_APP_KEY || APP_KEY;
@@ -173,70 +173,106 @@ export default async function handler(req, res) {
         // 직전 개장일의 중간값 계산
         const prevMiddle = (parseInt(prevData.stck_hgpr) + parseInt(prevData.stck_lwpr)) / 2;
         
+        // 날짜를 yyyy-mm-dd 형식으로 변환 (로그 확인용)
+        const logDateStr = `${latestYear}-${String(latestMonth + 1).padStart(2, '0')}-${String(latestDay).padStart(2, '0')}`;
+        
         // 조건 체크: 분봉 데이터로 조건 확인 (각 조건별로 boolean 값 저장)
         let condition1 = false;
         let condition2 = false;
         let condition3 = false;
         
+        // Redis에서 해당 날짜의 로그가 이미 있는지 확인
+        let useCachedConditions = false;
         try {
-          // 최근 개장일 분봉 데이터 조회 (9:30~10:00)
-          const latestMinuteData = await getMinuteData(stockCode, latestDateStr, accessToken, KIS_APP_KEY, KIS_APP_SECRET);
-          
-          // 직전 개장일 분봉 데이터 조회 (9:30~10:00)
-          const prevMinuteData = await getMinuteData(stockCode, dateStr, accessToken, KIS_APP_KEY, KIS_APP_SECRET);
-          
-          if (latestMinuteData && prevMinuteData) {
-            // 조건 1: 최근 개장일의 9:30am ~ 9:50am 시간 사이의 가격 변동이 직전 개장일의 중간값을 1회 이상 넘긴 적이 있는지
-            for (const minute of latestMinuteData) {
-              const time = minute.stck_std_time || minute.time || '';
-              if (time >= '0930' && time <= '0950') {
-                const price = parseInt(minute.stck_prpr || minute.price || 0);
-                if (price > prevMiddle) {
-                  condition1 = true;
-                  break;
-                }
-              }
+          const client = getRedisClient();
+          if (client) {
+            if (client.status === 'end' || client.status === 'close') {
+              await client.connect();
             }
             
-            // 조건 2: 최근 개장일의 9:50am ~ 10:00am 시간 사이의 가격 변동이 직전 개장일의 중간값 이하로 내려간 적이 없는지
-            condition2 = true;
-            for (const minute of latestMinuteData) {
-              const time = minute.stck_std_time || minute.time || '';
-              if (time >= '0950' && time <= '1000') {
-                const price = parseInt(minute.stck_prpr || minute.price || 0);
-                if (price <= prevMiddle) {
-                  condition2 = false;
-                  break;
-                }
+            const redisKey = `stock-log-${stockCode}`;
+            const logDataStr = await client.get(redisKey);
+            
+            if (logDataStr) {
+              const logData = JSON.parse(logDataStr);
+              const existingLog = logData.find(entry => entry.date === logDateStr);
+              
+              if (existingLog) {
+                // 이미 기록된 날짜이면 기존 조건 값 사용 (계산 건너뛰기)
+                condition1 = existingLog.condition1 || false;
+                condition2 = existingLog.condition2 || false;
+                condition3 = existingLog.condition3 || false;
+                useCachedConditions = true;
+                console.log(`✅ ${stockCode} ${logDateStr} 로그 캐시 사용 (조건 계산 건너뜀)`);
               }
-            }
-            
-            // 조건 3: 최근 개장일의 9:30am ~ 10:00am 시간 사이의 누적 거래량이 직전일의 9:30am ~ 10:00am 시간 사이의 누적 거래량 이상인지
-            let latestVolume = 0;
-            for (const minute of latestMinuteData) {
-              const time = minute.stck_std_time || minute.time || '';
-              if (time >= '0930' && time <= '1000') {
-                latestVolume += parseInt(minute.acml_vol || minute.volume || 0);
-              }
-            }
-            
-            let prevVolume = 0;
-            for (const minute of prevMinuteData) {
-              const time = minute.stck_std_time || minute.time || '';
-              if (time >= '0930' && time <= '1000') {
-                prevVolume += parseInt(minute.acml_vol || minute.volume || 0);
-              }
-            }
-            
-            condition3 = latestVolume >= prevVolume;
-            
-            const conditionCount = (condition1 ? 1 : 0) + (condition2 ? 1 : 0) + (condition3 ? 1 : 0);
-            if (conditionCount > 0) {
-              console.log(`✅ ${stockCode} 초록색 동그라미 조건 만족: ${conditionCount}개 (조건1: ${condition1}, 조건2: ${condition2}, 조건3: ${condition3})`);
             }
           }
         } catch (error) {
-          console.log(`⚠️ ${stockCode} 분봉 데이터 조회 실패, 조건 체크 건너뜀: ${error.message}`);
+          console.log(`⚠️ ${stockCode} 로그 캐시 확인 실패, 조건 계산 진행: ${error.message}`);
+        }
+        
+        // 캐시된 조건이 없을 때만 조건 계산
+        if (!useCachedConditions) {
+          try {
+            // 최근 개장일 분봉 데이터 조회 (9:30~10:00)
+            const latestMinuteData = await getMinuteData(stockCode, latestDateStr, accessToken, KIS_APP_KEY, KIS_APP_SECRET);
+            
+            // 직전 개장일 분봉 데이터 조회 (9:30~10:00)
+            const prevMinuteData = await getMinuteData(stockCode, dateStr, accessToken, KIS_APP_KEY, KIS_APP_SECRET);
+            
+            if (latestMinuteData && prevMinuteData) {
+              // 조건 1: 최근 개장일의 9:30am ~ 9:50am 시간 사이의 가격 변동이 직전 개장일의 중간값을 1회 이상 넘긴 적이 있는지
+              for (const minute of latestMinuteData) {
+                const time = minute.stck_std_time || minute.time || '';
+                if (time >= '0930' && time <= '0950') {
+                  const price = parseInt(minute.stck_prpr || minute.price || 0);
+                  if (price > prevMiddle) {
+                    condition1 = true;
+                    break;
+                  }
+                }
+              }
+              
+              // 조건 2: 최근 개장일의 9:50am ~ 10:00am 시간 사이의 가격 변동이 직전 개장일의 중간값 이하로 내려간 적이 없는지
+              condition2 = true;
+              for (const minute of latestMinuteData) {
+                const time = minute.stck_std_time || minute.time || '';
+                if (time >= '0950' && time <= '1000') {
+                  const price = parseInt(minute.stck_prpr || minute.price || 0);
+                  if (price <= prevMiddle) {
+                    condition2 = false;
+                    break;
+                  }
+                }
+              }
+              
+              // 조건 3: 최근 개장일의 9:30am ~ 10:00am 시간 사이의 누적 거래량이 직전일의 9:30am ~ 10:00am 시간 사이의 누적 거래량 이상인지
+              let latestVolume = 0;
+              for (const minute of latestMinuteData) {
+                const time = minute.stck_std_time || minute.time || '';
+                if (time >= '0930' && time <= '1000') {
+                  latestVolume += parseInt(minute.acml_vol || minute.volume || 0);
+                }
+              }
+              
+              let prevVolume = 0;
+              for (const minute of prevMinuteData) {
+                const time = minute.stck_std_time || minute.time || '';
+                if (time >= '0930' && time <= '1000') {
+                  prevVolume += parseInt(minute.acml_vol || minute.volume || 0);
+                }
+              }
+              
+              condition3 = latestVolume >= prevVolume;
+              
+              const conditionCount = (condition1 ? 1 : 0) + (condition2 ? 1 : 0) + (condition3 ? 1 : 0);
+              if (conditionCount > 0) {
+                console.log(`✅ ${stockCode} 초록색 동그라미 조건 만족: ${conditionCount}개 (조건1: ${condition1}, 조건2: ${condition2}, 조건3: ${condition3})`);
+              }
+            }
+          } catch (error) {
+            console.log(`⚠️ ${stockCode} 분봉 데이터 조회 실패, 조건 체크 건너뜀: ${error.message}`);
+          }
         }
         
         results[stockCode] = {
