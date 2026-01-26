@@ -464,12 +464,15 @@ export async function getMinuteData(stockCode, date, accessToken, appKey, appSec
                     date instanceof Date ? getTodayString() : 
                     getTodayString();
     
+    console.log(`📅 분봉 데이터 조회: ${stockCode}, 날짜: ${dateStr}, 시간: ${startHour}~${endHour}`);
+    
     const maxRetries = 2;
     let lastError;
     
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
         // 한국투자증권 분봉 차트 조회 API
+        // 참고: 이 API는 현재 거래일의 데이터만 조회 가능 (과거 날짜는 조회 불가)
         const response = await axios.get(
           'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice',
           {
@@ -493,9 +496,16 @@ export async function getMinuteData(stockCode, date, accessToken, appKey, appSec
           }
         );
         
+        console.log(`📊 ${stockCode} 분봉 API 응답: ${response.data.output ? response.data.output.length : 0}개 데이터`);
+        
         if (response.data.output && response.data.output.length > 0) {
+          // 응답 데이터의 시간 정보 확인
+          const firstData = response.data.output[0];
+          const lastData = response.data.output[response.data.output.length - 1];
+          console.log(`⏰ ${stockCode} 분봉 데이터 시간 범위: ${firstData.stck_std_time || firstData.time || 'N/A'} ~ ${lastData.stck_std_time || lastData.time || 'N/A'}`);
           return response.data.output;
         }
+        console.log(`⚠️ ${stockCode} 분봉 데이터가 비어있음`);
         return null;
       } catch (error) {
         lastError = error;
