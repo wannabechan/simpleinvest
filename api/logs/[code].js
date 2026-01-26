@@ -52,7 +52,7 @@ export default async function handler(req, res) {
       }
     } else if (req.method === 'POST') {
       // 로그 저장
-      const { date, condition1, condition2, condition3, priceAt11am, closePrice } = req.body;
+      const { date, condition1, condition2, condition3, priceAt10am, priceAt11am, closePrice } = req.body;
 
       if (!date) {
         return res.status(400).json({ error: '날짜가 필요합니다.' });
@@ -75,6 +75,7 @@ export default async function handler(req, res) {
           condition1: condition1 || false,
           condition2: condition2 || false,
           condition3: condition3 || false,
+          priceAt10am: priceAt10am !== null && priceAt10am !== undefined ? priceAt10am : null,
           priceAt11am: priceAt11am !== null && priceAt11am !== undefined ? priceAt11am : null,
           closePrice: closePrice || 0
         };
