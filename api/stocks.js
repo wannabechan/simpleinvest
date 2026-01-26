@@ -218,7 +218,10 @@ export default async function handler(req, res) {
         
         // 10am 가격은 캐시 여부와 관계없이 항상 조회 (가격 정보는 항상 최신으로 업데이트)
         try {
+          console.log(`🔍 ${stockCode} 10am 가격 조회 시작 (날짜: ${latestDateStr})`);
           const minuteData10am = await getMinuteData(stockCode, latestDateStr, accessToken, KIS_APP_KEY, KIS_APP_SECRET, '1000', '1001');
+          console.log(`📊 ${stockCode} 10am 분봉 데이터 조회 결과: ${minuteData10am ? minuteData10am.length : 0}개`);
+          
           if (minuteData10am && minuteData10am.length > 0) {
             // 10:00 또는 10:01 시간대의 첫 번째 가격 사용
             const minute10am = minuteData10am.find(m => {
@@ -227,15 +230,33 @@ export default async function handler(req, res) {
             });
             if (minute10am) {
               priceAt10am = parseInt(minute10am.stck_prpr || minute10am.price || 0);
+              console.log(`✅ ${stockCode} 10am 가격 조회 성공: ${priceAt10am}`);
+            } else {
+              // 정확한 시간대를 찾지 못하면 가장 가까운 시간대 사용
+              const closest10am = minuteData10am.find(m => {
+                const time = m.stck_std_time || m.time || '';
+                return time >= '1000';
+              });
+              if (closest10am) {
+                priceAt10am = parseInt(closest10am.stck_prpr || closest10am.price || 0);
+                console.log(`✅ ${stockCode} 10am 가격 조회 성공 (가장 가까운 시간대): ${priceAt10am}`);
+              } else {
+                console.log(`⚠️ ${stockCode} 10am 시간대 데이터를 찾을 수 없음`);
+              }
             }
+          } else {
+            console.log(`⚠️ ${stockCode} 10am 분봉 데이터가 없음 (과거 날짜일 수 있음)`);
           }
         } catch (error) {
-          console.log(`⚠️ ${stockCode} 10am 가격 조회 실패: ${error.message}`);
+          console.log(`❌ ${stockCode} 10am 가격 조회 실패: ${error.message}`);
         }
         
         // 11am 가격은 캐시 여부와 관계없이 항상 조회 (가격 정보는 항상 최신으로 업데이트)
         try {
+          console.log(`🔍 ${stockCode} 11am 가격 조회 시작 (날짜: ${latestDateStr})`);
           const minuteData11am = await getMinuteData(stockCode, latestDateStr, accessToken, KIS_APP_KEY, KIS_APP_SECRET, '1100', '1101');
+          console.log(`📊 ${stockCode} 11am 분봉 데이터 조회 결과: ${minuteData11am ? minuteData11am.length : 0}개`);
+          
           if (minuteData11am && minuteData11am.length > 0) {
             // 11:00 또는 11:01 시간대의 첫 번째 가격 사용
             const minute11am = minuteData11am.find(m => {
@@ -244,10 +265,25 @@ export default async function handler(req, res) {
             });
             if (minute11am) {
               priceAt11am = parseInt(minute11am.stck_prpr || minute11am.price || 0);
+              console.log(`✅ ${stockCode} 11am 가격 조회 성공: ${priceAt11am}`);
+            } else {
+              // 정확한 시간대를 찾지 못하면 가장 가까운 시간대 사용
+              const closest11am = minuteData11am.find(m => {
+                const time = m.stck_std_time || m.time || '';
+                return time >= '1100';
+              });
+              if (closest11am) {
+                priceAt11am = parseInt(closest11am.stck_prpr || closest11am.price || 0);
+                console.log(`✅ ${stockCode} 11am 가격 조회 성공 (가장 가까운 시간대): ${priceAt11am}`);
+              } else {
+                console.log(`⚠️ ${stockCode} 11am 시간대 데이터를 찾을 수 없음`);
+              }
             }
+          } else {
+            console.log(`⚠️ ${stockCode} 11am 분봉 데이터가 없음 (과거 날짜일 수 있음)`);
           }
         } catch (error) {
-          console.log(`⚠️ ${stockCode} 11am 가격 조회 실패: ${error.message}`);
+          console.log(`❌ ${stockCode} 11am 가격 조회 실패: ${error.message}`);
         }
         
         // 캐시된 조건이 없을 때만 조건 계산
