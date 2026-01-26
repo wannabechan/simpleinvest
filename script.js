@@ -455,9 +455,10 @@ function displayStockCard(data, stockCode) {
     stocksContainer.appendChild(card);
     
     // 로그 업데이트 (비동기, await 없이 실행)
+    const priceAt10am = data.priceAt10am !== null && data.priceAt10am !== undefined ? data.priceAt10am : null;
     const priceAt11am = data.priceAt11am !== null && data.priceAt11am !== undefined ? data.priceAt11am : null;
     const closePrice = data.closePrice || data.latestClose || 0;
-    updateLog(stockCode, latestDate, condition1, condition2, condition3, priceAt11am, closePrice).catch(err => {
+    updateLog(stockCode, latestDate, condition1, condition2, condition3, priceAt10am, priceAt11am, closePrice).catch(err => {
         console.error(`로그 업데이트 실패 (${stockCode}):`, err);
     });
 }
@@ -497,7 +498,7 @@ async function getLogData(stockCode) {
 }
 
 // Redis에 로그 데이터 저장 (API 호출)
-async function saveLogData(stockCode, date, condition1, condition2, condition3, priceAt11am, closePrice) {
+async function saveLogData(stockCode, date, condition1, condition2, condition3, priceAt10am, priceAt11am, closePrice) {
     try {
         const apiUrl = `${API_BASE_URL}/api/logs/${stockCode}`;
         const response = await fetch(apiUrl, {
@@ -510,6 +511,7 @@ async function saveLogData(stockCode, date, condition1, condition2, condition3, 
                 condition1: condition1,
                 condition2: condition2,
                 condition3: condition3,
+                priceAt10am: priceAt10am,
                 priceAt11am: priceAt11am,
                 closePrice: closePrice
             })
@@ -529,7 +531,7 @@ async function saveLogData(stockCode, date, condition1, condition2, condition3, 
 }
 
 // 로그 업데이트 (오후 5시 이후에만 기록)
-async function updateLog(stockCode, tradingDate, condition1, condition2, condition3, priceAt11am, closePrice) {
+async function updateLog(stockCode, tradingDate, condition1, condition2, condition3, priceAt10am, priceAt11am, closePrice) {
     const now = new Date();
     const currentHour = now.getHours();
     
@@ -546,20 +548,8 @@ async function updateLog(stockCode, tradingDate, condition1, condition2, conditi
     // 날짜를 yyyy-mm-dd 형식으로 변환
     const dateStr = formatDateForLog(tradingDate);
     
-    // 이미 기록된 날짜인지 확인
-    const logData = await getLogData(stockCode);
-    const existingLog = logData.find(entry => entry.date === dateStr);
-    
-    if (existingLog) {
-        // 이미 기록된 날짜이면 저장 건너뛰기
-        console.log(`✅ ${stockCode} ${dateStr} 로그가 이미 존재하여 저장 건너뜀`);
-        // 로그창만 업데이트
-        await displayLog(stockCode);
-        return;
-    }
-    
-    // Redis에 저장
-    await saveLogData(stockCode, dateStr, condition1, condition2, condition3, priceAt11am, closePrice);
+    // 가격 정보는 항상 최신으로 업데이트해야 하므로 저장 (백엔드에서 이미 존재하면 업데이트)
+    await saveLogData(stockCode, dateStr, condition1, condition2, condition3, priceAt10am, priceAt11am, closePrice);
     
     // 로그창 업데이트
     await displayLog(stockCode);
@@ -586,6 +576,9 @@ async function displayLog(stockCode) {
             <span class="green-dot ${entry.condition2 ? 'filled' : ''}"></span>
             <span class="green-dot ${entry.condition3 ? 'filled' : ''}"></span>
         `;
+        const priceAt10amText = entry.priceAt10am !== null && entry.priceAt10am !== undefined 
+            ? formatPrice(entry.priceAt10am) 
+            : '-';
         const priceAt11amText = entry.priceAt11am !== null && entry.priceAt11am !== undefined 
             ? formatPrice(entry.priceAt11am) 
             : '-';
@@ -594,6 +587,7 @@ async function displayLog(stockCode) {
         return `<div style="margin-bottom: 8px; padding: 4px 0; ${borderBottom}">
             <span style="color: #5f6368; font-size: 12px; margin-right: 12px;">${entry.date}</span>
             <span style="display: inline-flex; align-items: center; gap: 4px; margin-right: 12px;">${greenDots}</span>
+            <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">10am: ${priceAt10amText}</span>
             <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">11am: ${priceAt11amText}</span>
             <span style="color: #5f6368; font-size: 12px;">종가: ${closePriceText}</span>
         </div>`;
