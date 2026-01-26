@@ -107,11 +107,17 @@ body {
 .green-dot {
     width: 12px;
     height: 12px;
-    background-color: #34a853;
+    border: 2px solid #34a853;
     border-radius: 50%;
     display: inline-block;
     flex-shrink: 0;
     margin-left: 4px;
+    background-color: transparent;
+    transition: background-color 0.2s ease;
+}
+
+.green-dot.filled {
+    background-color: #34a853;
 }
 
 .green-dot:first-of-type {
@@ -259,7 +265,7 @@ body {
 }
 
 .log-content {
-    height: 300px;
+    height: 150px;
     overflow-y: auto;
     background-color: #f8f9fa;
     border: 1px solid #e8eaed;
@@ -420,6 +426,7 @@ body {
     .green-dot {
         width: 10px;
         height: 10px;
+        border-width: 1.5px;
         margin-left: 3px;
     }
     
@@ -522,7 +529,7 @@ body {
     }
     
     .log-content {
-        height: 300px;
+        height: 150px;
         font-size: 11px;
         padding: 10px;
     }
