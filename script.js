@@ -437,6 +437,9 @@ function displayStockCard(data, stockCode) {
                 </div>
             </div>
         </div>
+        <div class="log-container">
+            <div class="log-content" id="log-${stockCode}"></div>
+        </div>
     `;
     
     stocksContainer.appendChild(card);
