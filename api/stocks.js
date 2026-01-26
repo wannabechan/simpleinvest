@@ -173,8 +173,11 @@ export default async function handler(req, res) {
         // 직전 개장일의 중간값 계산
         const prevMiddle = (parseInt(prevData.stck_hgpr) + parseInt(prevData.stck_lwpr)) / 2;
         
-        // 조건 체크: 분봉 데이터로 조건 확인 (각 조건이 맞을 때마다 카운트 증가)
-        let greenDotCount = 0;
+        // 조건 체크: 분봉 데이터로 조건 확인 (각 조건별로 boolean 값 저장)
+        let condition1 = false;
+        let condition2 = false;
+        let condition3 = false;
+        
         try {
           // 최근 개장일 분봉 데이터 조회 (9:30~10:00)
           const latestMinuteData = await getMinuteData(stockCode, latestDateStr, accessToken, KIS_APP_KEY, KIS_APP_SECRET);
@@ -184,7 +187,6 @@ export default async function handler(req, res) {
           
           if (latestMinuteData && prevMinuteData) {
             // 조건 1: 최근 개장일의 9:30am ~ 9:50am 시간 사이의 가격 변동이 직전 개장일의 중간값을 1회 이상 넘긴 적이 있는지
-            let condition1 = false;
             for (const minute of latestMinuteData) {
               const time = minute.stck_std_time || minute.time || '';
               if (time >= '0930' && time <= '0950') {
@@ -195,12 +197,9 @@ export default async function handler(req, res) {
                 }
               }
             }
-            if (condition1) {
-              greenDotCount++;
-            }
             
             // 조건 2: 최근 개장일의 9:50am ~ 10:00am 시간 사이의 가격 변동이 직전 개장일의 중간값 이하로 내려간 적이 없는지
-            let condition2 = true;
+            condition2 = true;
             for (const minute of latestMinuteData) {
               const time = minute.stck_std_time || minute.time || '';
               if (time >= '0950' && time <= '1000') {
@@ -210,9 +209,6 @@ export default async function handler(req, res) {
                   break;
                 }
               }
-            }
-            if (condition2) {
-              greenDotCount++;
             }
             
             // 조건 3: 최근 개장일의 9:30am ~ 10:00am 시간 사이의 누적 거래량이 직전일의 9:30am ~ 10:00am 시간 사이의 누적 거래량 이상인지
@@ -232,13 +228,11 @@ export default async function handler(req, res) {
               }
             }
             
-            const condition3 = latestVolume >= prevVolume;
-            if (condition3) {
-              greenDotCount++;
-            }
+            condition3 = latestVolume >= prevVolume;
             
-            if (greenDotCount > 0) {
-              console.log(`✅ ${stockCode} 초록색 동그라미 조건 만족: ${greenDotCount}개`);
+            const conditionCount = (condition1 ? 1 : 0) + (condition2 ? 1 : 0) + (condition3 ? 1 : 0);
+            if (conditionCount > 0) {
+              console.log(`✅ ${stockCode} 초록색 동그라미 조건 만족: ${conditionCount}개 (조건1: ${condition1}, 조건2: ${condition2}, 조건3: ${condition3})`);
             }
           }
         } catch (error) {
@@ -248,7 +242,9 @@ export default async function handler(req, res) {
         results[stockCode] = {
           name: stockName,
           currentPrice: currentPrice, // 현재가 추가
-          greenDotCount: greenDotCount, // 초록색 동그라미 개수 (0~3)
+          condition1: condition1, // 조건1 만족 여부
+          condition2: condition2, // 조건2 만족 여부
+          condition3: condition3, // 조건3 만족 여부
           // 최근 개장일 바로 이전의 개장일 정보
           prevDate: date,
           prevOpen: parseInt(prevData.stck_oprc) || 0,
