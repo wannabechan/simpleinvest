@@ -450,7 +450,8 @@ export async function getCurrentPrice(stockCode, accessToken, appKey, appSecret)
 }
 
 // 분봉 데이터 가져오기 (9:30~10:00 구간)
-export async function getMinuteData(stockCode, date, accessToken, appKey, appSecret) {
+// 분봉 데이터 조회 (시간 범위 지정 가능)
+export async function getMinuteData(stockCode, date, accessToken, appKey, appSecret, startHour = '0930', endHour = '1000') {
   // API 키 확인
   if (!appKey || !appSecret) {
     console.warn('API 키가 없어 분봉 데이터 조회를 건너뜁니다.');
@@ -475,8 +476,8 @@ export async function getMinuteData(stockCode, date, accessToken, appKey, appSec
             params: {
               FID_COND_MRKT_DIV_CODE: 'J',
               FID_INPUT_ISCD: stockCode,
-              FID_INPUT_HOUR_1: '0930', // 시작 시간 (9:30)
-              FID_INPUT_HOUR_2: '1000', // 종료 시간 (10:00)
+              FID_INPUT_HOUR_1: startHour, // 시작 시간
+              FID_INPUT_HOUR_2: endHour, // 종료 시간
               FID_CHART_DIV_CODE: 'M', // 분봉
               FID_CHART_INTER: '1', // 1분봉
               FID_ORG_ADJ_PRC: '0' // 수정주가 미반영
