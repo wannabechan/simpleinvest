@@ -199,6 +199,10 @@ async function fetchAllStocks() {
         stockList.forEach(stock => {
             if (data.results[stock.code]) {
                 displayStockCard(data.results[stock.code], stock.code);
+                // 로그 표시 (기존 저장된 로그, 비동기)
+                displayLog(stock.code).catch(err => {
+                    console.error(`로그 표시 실패 (${stock.code}):`, err);
+                });
             }
         });
         
@@ -449,6 +453,143 @@ function displayStockCard(data, stockCode) {
     `;
     
     stocksContainer.appendChild(card);
+    
+    // 로그 업데이트 (비동기, await 없이 실행)
+    updateLog(stockCode, latestDate, condition1, condition2, condition3).catch(err => {
+        console.error(`로그 업데이트 실패 (${stockCode}):`, err);
+    });
+}
+
+// 날짜를 yyyy-mm-dd 형식으로 변환
+function formatDateForLog(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+// 코스피가 정식으로 개장한 날짜인지 확인 (주말이 아닌 경우)
+function isTradingDay(date) {
+    const day = date.getDay();
+    // 일요일(0)과 토요일(6)이 아닌 경우
+    return day !== 0 && day !== 6;
+}
+
+// Redis에서 로그 데이터 가져오기 (API 호출)
+async function getLogData(stockCode) {
+    try {
+        const apiUrl = `${API_BASE_URL}/api/logs/${stockCode}`;
+        const response = await fetch(apiUrl);
+        
+        if (!response.ok) {
+            console.error(`로그 조회 실패: ${response.status}`);
+            return [];
+        }
+        
+        const data = await response.json();
+        return data.logs || [];
+    } catch (error) {
+        console.error(`로그 조회 중 오류:`, error);
+        return [];
+    }
+}
+
+// Redis에 로그 데이터 저장 (API 호출)
+async function saveLogData(stockCode, date, condition1, condition2, condition3) {
+    try {
+        const apiUrl = `${API_BASE_URL}/api/logs/${stockCode}`;
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                date: date,
+                condition1: condition1,
+                condition2: condition2,
+                condition3: condition3
+            })
+        });
+        
+        if (!response.ok) {
+            console.error(`로그 저장 실패: ${response.status}`);
+            return false;
+        }
+        
+        const data = await response.json();
+        return data.success || false;
+    } catch (error) {
+        console.error(`로그 저장 중 오류:`, error);
+        return false;
+    }
+}
+
+// 로그 업데이트 (오후 5시 이후에만 기록)
+async function updateLog(stockCode, tradingDate, condition1, condition2, condition3) {
+    const now = new Date();
+    const currentHour = now.getHours();
+    
+    // 오후 5시(17시) 이후가 아니면 기록하지 않음
+    if (currentHour < 17) {
+        return;
+    }
+    
+    // 코스피가 정식으로 개장한 날짜인지 확인
+    if (!isTradingDay(tradingDate)) {
+        return;
+    }
+    
+    // 날짜를 yyyy-mm-dd 형식으로 변환
+    const dateStr = formatDateForLog(tradingDate);
+    
+    // 이미 기록된 날짜인지 확인
+    const logData = await getLogData(stockCode);
+    const existingLog = logData.find(entry => entry.date === dateStr);
+    
+    if (existingLog) {
+        // 이미 기록된 날짜이면 저장 건너뛰기
+        console.log(`✅ ${stockCode} ${dateStr} 로그가 이미 존재하여 저장 건너뜀`);
+        // 로그창만 업데이트
+        await displayLog(stockCode);
+        return;
+    }
+    
+    // Redis에 저장
+    await saveLogData(stockCode, dateStr, condition1, condition2, condition3);
+    
+    // 로그창 업데이트
+    await displayLog(stockCode);
+}
+
+// 로그창에 로그 표시
+async function displayLog(stockCode) {
+    const logElement = document.getElementById(`log-${stockCode}`);
+    if (!logElement) {
+        return;
+    }
+    
+    const logData = await getLogData(stockCode);
+    
+    if (logData.length === 0) {
+        logElement.innerHTML = '<div style="color: #9aa0a6; font-size: 12px;">기록된 로그가 없습니다.</div>';
+        return;
+    }
+    
+    // 로그 항목들을 HTML로 생성
+    const logItems = logData.map((entry, index) => {
+        const greenDots = `
+            <span class="green-dot ${entry.condition1 ? 'filled' : ''}"></span>
+            <span class="green-dot ${entry.condition2 ? 'filled' : ''}"></span>
+            <span class="green-dot ${entry.condition3 ? 'filled' : ''}"></span>
+        `;
+        const borderBottom = index < logData.length - 1 ? 'border-bottom: 1px solid #e8eaed;' : '';
+        return `<div style="margin-bottom: 8px; padding: 4px 0; ${borderBottom}">
+            <span style="color: #5f6368; font-size: 12px; margin-right: 12px;">${entry.date}</span>
+            <span style="display: inline-flex; align-items: center; gap: 4px;">${greenDots}</span>
+        </div>`;
+    }).join('');
+    
+    logElement.innerHTML = logItems;
 }
 
 // 날짜 포맷팅
