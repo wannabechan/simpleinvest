@@ -17,7 +17,7 @@ const TWELVE_HOURS = 12 * 60 * 60 * 1000; // 12시간 (밀리초)
 let redisClient = null;
 
 // Redis 클라이언트 초기화
-function getRedisClient() {
+export function getRedisClient() {
   if (redisClient) {
     return redisClient;
   }
