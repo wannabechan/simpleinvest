@@ -202,8 +202,6 @@ export default async function handler(req, res) {
                 condition1 = existingLog.condition1 || false;
                 condition2 = existingLog.condition2 || false;
                 condition3 = existingLog.condition3 || false;
-                // 기존 로그에서 11am 가격과 종가도 가져오기
-                priceAt11am = existingLog.priceAt11am !== null && existingLog.priceAt11am !== undefined ? existingLog.priceAt11am : null;
                 useCachedConditions = true;
                 console.log(`✅ ${stockCode} ${logDateStr} 로그 캐시 사용 (조건 계산 건너뜀)`);
               }
@@ -213,11 +211,46 @@ export default async function handler(req, res) {
           console.log(`⚠️ ${stockCode} 로그 캐시 확인 실패, 조건 계산 진행: ${error.message}`);
         }
         
-        // 11am 가격과 종가 가져오기 (로그 저장용)
+        // 10am, 11am 가격과 종가 가져오기 (로그 저장용 - 항상 새로 조회)
+        let priceAt10am = null;
         let priceAt11am = null;
         const closePrice = parseInt(latestData.stck_clpr) || 0;
         
-        // 캐시된 조건이 없을 때만 조건 계산 및 11am 가격 조회
+        // 10am 가격은 캐시 여부와 관계없이 항상 조회 (가격 정보는 항상 최신으로 업데이트)
+        try {
+          const minuteData10am = await getMinuteData(stockCode, latestDateStr, accessToken, KIS_APP_KEY, KIS_APP_SECRET, '1000', '1001');
+          if (minuteData10am && minuteData10am.length > 0) {
+            // 10:00 또는 10:01 시간대의 첫 번째 가격 사용
+            const minute10am = minuteData10am.find(m => {
+              const time = m.stck_std_time || m.time || '';
+              return time >= '1000' && time <= '1001';
+            });
+            if (minute10am) {
+              priceAt10am = parseInt(minute10am.stck_prpr || minute10am.price || 0);
+            }
+          }
+        } catch (error) {
+          console.log(`⚠️ ${stockCode} 10am 가격 조회 실패: ${error.message}`);
+        }
+        
+        // 11am 가격은 캐시 여부와 관계없이 항상 조회 (가격 정보는 항상 최신으로 업데이트)
+        try {
+          const minuteData11am = await getMinuteData(stockCode, latestDateStr, accessToken, KIS_APP_KEY, KIS_APP_SECRET, '1100', '1101');
+          if (minuteData11am && minuteData11am.length > 0) {
+            // 11:00 또는 11:01 시간대의 첫 번째 가격 사용
+            const minute11am = minuteData11am.find(m => {
+              const time = m.stck_std_time || m.time || '';
+              return time >= '1100' && time <= '1101';
+            });
+            if (minute11am) {
+              priceAt11am = parseInt(minute11am.stck_prpr || minute11am.price || 0);
+            }
+          }
+        } catch (error) {
+          console.log(`⚠️ ${stockCode} 11am 가격 조회 실패: ${error.message}`);
+        }
+        
+        // 캐시된 조건이 없을 때만 조건 계산
         if (!useCachedConditions) {
           try {
             // 최근 개장일 분봉 데이터 조회 (9:30~10:00)
@@ -225,23 +258,6 @@ export default async function handler(req, res) {
             
             // 직전 개장일 분봉 데이터 조회 (9:30~10:00)
             const prevMinuteData = await getMinuteData(stockCode, dateStr, accessToken, KIS_APP_KEY, KIS_APP_SECRET);
-            
-            // 11am 가격 조회 (11:00~11:01)
-            try {
-              const minuteData11am = await getMinuteData(stockCode, latestDateStr, accessToken, KIS_APP_KEY, KIS_APP_SECRET, '1100', '1101');
-              if (minuteData11am && minuteData11am.length > 0) {
-                // 11:00 또는 11:01 시간대의 첫 번째 가격 사용
-                const minute11am = minuteData11am.find(m => {
-                  const time = m.stck_std_time || m.time || '';
-                  return time >= '1100' && time <= '1101';
-                });
-                if (minute11am) {
-                  priceAt11am = parseInt(minute11am.stck_prpr || minute11am.price || 0);
-                }
-              }
-            } catch (error) {
-              console.log(`⚠️ ${stockCode} 11am 가격 조회 실패: ${error.message}`);
-            }
             
             if (latestMinuteData && prevMinuteData) {
               // 조건 1: 최근 개장일의 9:30am ~ 9:50am 시간 사이의 가격 변동이 직전 개장일의 중간값을 1회 이상 넘긴 적이 있는지
@@ -304,6 +320,7 @@ export default async function handler(req, res) {
           condition1: condition1, // 조건1 만족 여부
           condition2: condition2, // 조건2 만족 여부
           condition3: condition3, // 조건3 만족 여부
+          priceAt10am: priceAt10am, // 10am 가격 (로그용)
           priceAt11am: priceAt11am, // 11am 가격 (로그용)
           closePrice: closePrice, // 종가 (로그용)
           // 최근 개장일 바로 이전의 개장일 정보
