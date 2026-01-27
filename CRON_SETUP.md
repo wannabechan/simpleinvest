@@ -1,31 +1,83 @@
-# Cron Job 설정 가이드
+# Cron Job 설정 가이드 (무료 방법)
 
 ## 개요
 주식시장 개장일마다 9:30, 9:40, 9:50, 10:00에 자동으로 주식 가격을 조회하여 로그를 저장합니다.
 
-## 설정 방법
+## 🆓 무료 설정 방법 (권장)
 
-### 1. Vercel Cron Jobs 설정
+### 방법 1: GitHub Actions (완전 무료, 권장)
+
+GitHub Actions를 사용하면 완전 무료로 cron job을 실행할 수 있습니다.
+
+#### 설정 단계:
+
+1. **GitHub 저장소에 워크플로우 파일 추가**
+   - 파일 경로: `.github/workflows/cron-log-prices.yml`
+   - 이미 생성되어 있습니다.
+
+2. **GitHub Secrets 설정**
+   - GitHub 저장소 → Settings → Secrets and variables → Actions
+   - `VERCEL_URL` 추가: `https://your-project.vercel.app` (실제 Vercel 배포 URL)
+
+3. **자동 실행**
+   - GitHub Actions가 자동으로 스케줄에 따라 실행됩니다
+   - Actions 탭에서 실행 로그 확인 가능
+
+#### 장점:
+- ✅ 완전 무료
+- ✅ GitHub와 통합되어 관리 용이
+- ✅ 실행 로그 확인 가능
+- ✅ 수동 실행도 가능 (workflow_dispatch)
+
+---
+
+### 방법 2: 외부 Cron 서비스 (무료 플랜)
+
+#### cron-job.org (무료)
+
+1. **회원가입**: https://cron-job.org (무료)
+2. **새 Cron Job 생성**:
+   - URL: `https://your-project.vercel.app/api/cron/log-prices`
+   - 스케줄: 
+     - 9:30 (KST): `30 0 * * 1-5` (UTC)
+     - 9:40 (KST): `40 0 * * 1-5` (UTC)
+     - 9:50 (KST): `50 0 * * 1-5` (UTC)
+     - 10:00 (KST): `0 1 * * 1-5` (UTC)
+   - 요일: 월~금 (1-5)
+
+#### EasyCron (무료)
+
+1. **회원가입**: https://www.easycron.com (무료 플랜)
+2. **동일한 설정**
+
+#### UptimeRobot (무료)
+
+1. **회원가입**: https://uptimerobot.com (무료 플랜)
+2. **HTTP(s) Monitor 생성**
+   - URL: `https://your-project.vercel.app/api/cron/log-prices`
+   - Monitoring Interval: 10분 (9:30, 9:40, 9:50, 10:00에 맞춰 조정)
+
+---
+
+## Vercel Cron Jobs (Pro 플랜 이상)
 
 `vercel.json`에 cron 설정이 추가되어 있습니다:
 - 9:30, 9:40, 9:50 (UTC 0:30, 0:40, 0:50 = KST 9:30, 9:40, 9:50)
 - 10:00 (UTC 1:00 = KST 10:00)
 - 월~금요일만 실행 (주말 제외)
 
-### 2. Vercel 대시보드에서 확인
+**주의**: Vercel Cron Jobs는 Pro 플랜($20/월) 이상에서만 사용 가능합니다.
 
-1. Vercel 대시보드 → 프로젝트 → Settings → Cron Jobs
-2. Cron job이 활성화되어 있는지 확인
-3. 실행 로그 확인 가능
+---
 
-### 3. 환경변수 확인
+## 환경변수 확인
 
 필요한 환경변수:
 - `KIS_APP_KEY`: 한국투자증권 API 키
 - `KIS_APP_SECRET`: 한국투자증권 API 시크릿
 - `REDIS_URL`: Redis 연결 URL (또는 `KV_URL`, `UPSTASH_REDIS_URL`)
 
-### 4. 로그 데이터 구조
+## 로그 데이터 구조
 
 Redis에 저장되는 로그 형식:
 ```json
@@ -42,7 +94,7 @@ Redis에 저장되는 로그 형식:
 ]
 ```
 
-### 5. 데이터 관리
+## 데이터 관리
 
 - 최근 60일만 유지 (자동 삭제)
 - 오래된 데이터는 자동으로 정리됨
@@ -54,29 +106,10 @@ Cron job을 수동으로 테스트하려면:
 curl -X GET https://your-domain.vercel.app/api/cron/log-prices
 ```
 
-## 주의사항
+또는 GitHub Actions에서 "Run workflow" 버튼으로 수동 실행 가능
 
-1. **Vercel Cron Jobs는 Pro 플랜 이상에서만 사용 가능합니다**
-   - 무료 플랜의 경우 외부 cron 서비스 사용 필요
-   - 예: cron-job.org, EasyCron 등
+## 시간대 참고
 
-2. **시간대**: Vercel은 UTC 시간을 사용하므로 한국 시간(KST)으로 변환 필요
-   - KST = UTC + 9시간
-
-3. **주말 처리**: 코드에서 자동으로 주말을 감지하여 실행하지 않음
-
-## 외부 Cron 서비스 사용 (무료 플랜)
-
-Vercel 무료 플랜을 사용하는 경우:
-
-1. **cron-job.org** (무료)
-   - URL: `https://your-domain.vercel.app/api/cron/log-prices`
-   - 스케줄: 매일 9:30, 9:40, 9:50, 10:00 (KST)
-   - 요일: 월~금
-
-2. **EasyCron** (무료)
-   - 동일한 설정
-
-3. **GitHub Actions** (무료)
-   - `.github/workflows/cron-log-prices.yml` 파일 생성
-   - 스케줄 워크플로우 설정
+- **UTC 시간**: Vercel, GitHub Actions는 UTC 시간 사용
+- **한국 시간 (KST)**: UTC + 9시간
+- 코드에서 자동으로 KST로 변환하여 처리
