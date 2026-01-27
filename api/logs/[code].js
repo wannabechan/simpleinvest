@@ -37,12 +37,23 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
-      // 로그 조회
+      // 로그 조회 (최근 60일만 반환)
       try {
         const logDataStr = await client.get(redisKey);
         if (logDataStr) {
           const logData = JSON.parse(logDataStr);
-          return res.status(200).json({ logs: logData });
+          
+          // 최근 60일만 필터링
+          const now = new Date();
+          const cutoffDate = new Date(now);
+          cutoffDate.setDate(cutoffDate.getDate() - 60);
+          
+          const filteredLogs = logData.filter(entry => {
+            const entryDate = new Date(entry.date);
+            return entryDate >= cutoffDate;
+          });
+          
+          return res.status(200).json({ logs: filteredLogs });
         } else {
           return res.status(200).json({ logs: [] });
         }
