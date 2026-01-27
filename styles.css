@@ -259,6 +259,9 @@ body {
 }
 
 .log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 8px;
     padding-bottom: 8px;
     border-bottom: 1px solid #e8eaed;
@@ -268,6 +271,44 @@ body {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+}
+
+.log-refresh-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background-color: #f1f3f4;
+    color: #5f6368;
+    border: 1px solid #dadce0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s, border-color 0.2s, transform 0.2s;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.log-refresh-btn:hover {
+    background-color: #e8eaed;
+    border-color: #bdc1c6;
+    transform: rotate(90deg);
+}
+
+.log-refresh-btn:active {
+    background-color: #dadce0;
+    transform: rotate(180deg);
+}
+
+.log-refresh-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.log-refresh-btn svg {
+    width: 16px;
+    height: 16px;
 }
 
 .log-delete-btn {
@@ -572,6 +613,16 @@ body {
     .log-delete-btn {
         padding: 5px 10px;
         font-size: 11px;
+    }
+    
+    .log-refresh-btn {
+        width: 28px;
+        height: 28px;
+    }
+    
+    .log-refresh-btn svg {
+        width: 14px;
+        height: 14px;
     }
     
     .log-container {

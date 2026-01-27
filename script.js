@@ -444,6 +444,12 @@ function displayStockCard(data, stockCode) {
                     <button class="log-delete-btn" data-stock-code="${stockCode}" data-days="5">최근 5일 삭제</button>
                     <button class="log-delete-btn" data-stock-code="${stockCode}" data-days="10">최근 10일 삭제</button>
                 </div>
+                <button class="log-refresh-btn" data-stock-code="${stockCode}" title="오늘 가격 수동 조회">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5" fill="none"/>
+                        <path d="M8 4V8L11 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </button>
             </div>
             <div class="log-content" id="log-${stockCode}"></div>
         </div>
@@ -460,6 +466,15 @@ function displayStockCard(data, stockCode) {
             await deleteRecentLogs(stockCode, days);
         });
     });
+    
+    // 수동 조회 버튼 이벤트 리스너 추가
+    const refreshBtn = card.querySelector('.log-refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', async function() {
+            const stockCode = this.getAttribute('data-stock-code');
+            await manuallyFetchTodayPrices(stockCode);
+        });
+    }
 }
 
 // 날짜를 yyyy-mm-dd 형식으로 변환
@@ -497,51 +512,6 @@ async function displayLog(stockCode) {
         const data = await response.json();
         const logData = data.logs || [];
         
-        // 한국 시간 기준으로 오늘 날짜 확인
-        const now = new Date();
-        const kstTime = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-        const today = new Date(kstTime.getUTCFullYear(), kstTime.getUTCMonth(), kstTime.getUTCDate());
-        const todayStr = formatDateForLog(today);
-        const currentHour = kstTime.getUTCHours();
-        
-        // 11am 이후이고, 주식시장 개장일인 경우
-        if (currentHour >= 11 && isTradingDay(today)) {
-            // 오늘 날짜의 로그 확인
-            const todayLog = logData.find(entry => entry.date === todayStr);
-            const has10amPrice = todayLog && 
-                                 todayLog.prices && 
-                                 todayLog.prices['1000'] !== null && 
-                                 todayLog.prices['1000'] !== undefined;
-            
-            // 당일 로그가 없거나 10am 가격이 없으면 가격 조회 및 저장
-            if (!todayLog || !has10amPrice) {
-                console.log(`📊 ${stockCode} 오늘 가격 로그가 없거나 10am 가격이 없어 조회 시작`);
-                
-                try {
-                    const fetchUrl = `${API_BASE_URL}/api/logs/fetch-today-prices?code=${stockCode}`;
-                    const fetchResponse = await fetch(fetchUrl);
-                    
-                    if (fetchResponse.ok) {
-                        const fetchData = await fetchResponse.json();
-                        console.log(`✅ ${stockCode} 오늘 가격 로그 저장 완료:`, fetchData.message);
-                        
-                        // 저장 후 로그 다시 조회
-                        const updatedResponse = await fetch(apiUrl);
-                        if (updatedResponse.ok) {
-                            const updatedData = await updatedResponse.json();
-                            const updatedLogData = updatedData.logs || [];
-                            renderLogItems(logElement, updatedLogData);
-                            return;
-                        }
-                    } else {
-                        console.error(`오늘 가격 조회 실패: ${fetchResponse.status}`);
-                    }
-                } catch (error) {
-                    console.error(`오늘 가격 조회 중 오류:`, error);
-                }
-            }
-        }
-        
         // 로그 표시
         if (logData.length === 0) {
             logElement.innerHTML = '<div style="color: #9aa0a6; font-size: 12px;">기록된 로그가 없습니다.</div>';
@@ -552,6 +522,67 @@ async function displayLog(stockCode) {
     } catch (error) {
         console.error(`로그 표시 중 오류:`, error);
         logElement.innerHTML = '<div style="color: #9aa0a6; font-size: 12px;">로그를 불러올 수 없습니다.</div>';
+    }
+}
+
+// 오늘 가격 수동 조회
+async function manuallyFetchTodayPrices(stockCode) {
+    const refreshBtn = document.querySelector(`.log-refresh-btn[data-stock-code="${stockCode}"]`);
+    
+    // 버튼 비활성화 및 로딩 표시
+    if (refreshBtn) {
+        refreshBtn.disabled = true;
+        refreshBtn.style.opacity = '0.5';
+        refreshBtn.style.cursor = 'not-allowed';
+    }
+    
+    try {
+        // 한국 시간 기준으로 오늘 날짜 확인
+        const now = new Date();
+        const kstTime = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+        const today = new Date(kstTime.getUTCFullYear(), kstTime.getUTCMonth(), kstTime.getUTCDate());
+        const todayStr = formatDateForLog(today);
+        const currentHour = kstTime.getUTCHours();
+        
+        // 11am 이후이고, 주식시장 개장일인지 확인
+        if (currentHour < 11) {
+            alert('11am 이후에만 사용 가능합니다.');
+            return;
+        }
+        
+        if (!isTradingDay(today)) {
+            alert('오늘은 주식시장 휴장일입니다.');
+            return;
+        }
+        
+        console.log(`📊 ${stockCode} 오늘 가격 수동 조회 시작`);
+        
+        const fetchUrl = `${API_BASE_URL}/api/logs/fetch-today-prices?code=${stockCode}`;
+        const fetchResponse = await fetch(fetchUrl);
+        
+        if (fetchResponse.ok) {
+            const fetchData = await fetchResponse.json();
+            console.log(`✅ ${stockCode} 오늘 가격 로그 저장 완료:`, fetchData.message);
+            
+            // 저장 후 로그 다시 조회 및 표시
+            await displayLog(stockCode);
+            
+            alert('오늘 가격 조회가 완료되었습니다.');
+        } else {
+            const errorData = await fetchResponse.json().catch(() => ({}));
+            console.error(`오늘 가격 조회 실패: ${fetchResponse.status}`, errorData);
+            alert('가격 조회에 실패했습니다. 나중에 다시 시도해주세요.');
+        }
+    } catch (error) {
+        console.error(`오늘 가격 조회 중 오류:`, error);
+        alert('가격 조회 중 오류가 발생했습니다.');
+    } finally {
+        // 버튼 다시 활성화
+        if (refreshBtn) {
+            refreshBtn.disabled = false;
+            refreshBtn.style.opacity = '1';
+            refreshBtn.style.cursor = 'pointer';
+        }
     }
 }
 
