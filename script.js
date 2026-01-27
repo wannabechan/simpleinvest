@@ -331,11 +331,10 @@ function displayStockCard(data, stockCode) {
     const latestChangePercent = data.latestOpen > 0 ? (latestChange / data.latestOpen) * 100 : 0;
     const latestMiddle = (data.latestHigh + data.latestLow) / 2;
     const latestMiddleChangePercent = data.latestClose > 0 ? ((latestMiddle - data.latestClose) / data.latestClose) * 100 : null;
-    const latestMiddleClass = (latestMiddleChangePercent >= 0.3 && latestMiddleChangePercent <= 1.2) ? 'middle-highlight' : '';
     let latestMiddleDisplayText = formatPrice(Math.round(latestMiddle));
     if (latestMiddleChangePercent !== null) {
         const sign = latestMiddleChangePercent >= 0 ? '+' : '';
-        latestMiddleDisplayText += ` <span class="middle-change ${latestMiddleClass}">(종가 대비 ${sign}${latestMiddleChangePercent.toFixed(2)}%)</span>`;
+        latestMiddleDisplayText += ` <span class="middle-change">(종가 대비 ${sign}${latestMiddleChangePercent.toFixed(2)}%)</span>`;
     }
     
     // 현재가 표시 텍스트 생성
@@ -659,30 +658,29 @@ async function deleteRecentLogs(stockCode, days) {
     }
 }
 
+// 로그 기록 시간대 (9:30~10:30 KST, 5분 간격)
+const LOG_TIME_SLOTS = ['0930', '0935', '0940', '0945', '0950', '0955', '1000', '1005', '1010', '1015', '1020', '1025', '1030'];
+
+// HHMM → "9:30" 형식 표시
+function formatTimeLabel(hhmm) {
+    const h = hhmm.slice(0, 2);
+    const m = hhmm.slice(2, 4);
+    return `${parseInt(h, 10)}:${m}`;
+}
+
 // 로그 항목들을 HTML로 렌더링
 function renderLogItems(logElement, logData) {
     const logItems = logData.map((entry, index) => {
         const prices = entry.prices || {};
-        const price0930 = prices['0930'] !== null && prices['0930'] !== undefined 
-            ? formatPrice(prices['0930']) 
-            : '-';
-        const price0940 = prices['0940'] !== null && prices['0940'] !== undefined 
-            ? formatPrice(prices['0940']) 
-            : '-';
-        const price0950 = prices['0950'] !== null && prices['0950'] !== undefined 
-            ? formatPrice(prices['0950']) 
-            : '-';
-        const price1000 = prices['1000'] !== null && prices['1000'] !== undefined 
-            ? formatPrice(prices['1000']) 
-            : '-';
-        
+        const timeSpans = LOG_TIME_SLOTS.map(hhmm => {
+            const val = prices[hhmm];
+            const disp = (val !== null && val !== undefined) ? formatPrice(val) : '-';
+            return `<span style="color: #5f6368; font-size: 12px; margin-right: 6px; white-space: nowrap;">${formatTimeLabel(hhmm)}: ${disp}</span>`;
+        }).join('');
         const borderBottom = index < logData.length - 1 ? 'border-bottom: 1px solid #e8eaed;' : '';
         return `<div style="margin-bottom: 8px; padding: 4px 0; ${borderBottom}">
-            <span style="color: #5f6368; font-size: 12px; margin-right: 12px; font-weight: 500;">${entry.date}</span>
-            <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">9:30: ${price0930}</span>
-            <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">9:40: ${price0940}</span>
-            <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">9:50: ${price0950}</span>
-            <span style="color: #5f6368; font-size: 12px;">10:00: ${price1000}</span>
+            <span style="color: #5f6368; font-size: 12px; margin-right: 10px; font-weight: 500;">${entry.date}</span>
+            ${timeSpans}
         </div>`;
     }).join('');
     
