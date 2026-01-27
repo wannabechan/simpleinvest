@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   // CORS 헤더 설정
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
@@ -112,6 +112,49 @@ export default async function handler(req, res) {
       } catch (error) {
         console.error(`❌ ${stockCode} 로그 저장 실패:`, error.message);
         return res.status(500).json({ error: '로그 저장 중 오류가 발생했습니다.' });
+      }
+    } else if (req.method === 'DELETE') {
+      // 특정 날짜의 로그 삭제
+      const { date } = req.query; // 쿼리 파라미터로 날짜 받기
+      
+      if (!date) {
+        return res.status(400).json({ error: '삭제할 날짜가 필요합니다. (예: ?date=2026-01-27)' });
+      }
+
+      try {
+        // 기존 로그 가져오기
+        const logDataStr = await client.get(redisKey);
+        if (!logDataStr) {
+          return res.status(404).json({ error: '로그 데이터가 없습니다.' });
+        }
+
+        let logData = JSON.parse(logDataStr);
+        
+        // 삭제할 날짜의 로그 찾기
+        const beforeCount = logData.length;
+        logData = logData.filter(entry => entry.date !== date);
+        const afterCount = logData.length;
+
+        if (beforeCount === afterCount) {
+          return res.status(404).json({ 
+            error: `날짜 ${date}의 로그를 찾을 수 없습니다.`,
+            found: false
+          });
+        }
+
+        // Redis에 저장
+        await client.set(redisKey, JSON.stringify(logData));
+
+        console.log(`✅ ${stockCode} 로그 삭제 완료: ${date} (${beforeCount} → ${afterCount}개)`);
+        return res.status(200).json({ 
+          success: true, 
+          message: `날짜 ${date}의 로그가 삭제되었습니다.`,
+          deletedDate: date,
+          remainingLogs: logData.length
+        });
+      } catch (error) {
+        console.error(`❌ ${stockCode} 로그 삭제 실패:`, error.message);
+        return res.status(500).json({ error: '로그 삭제 중 오류가 발생했습니다.' });
       }
     } else {
       return res.status(405).json({ error: 'Method not allowed' });
