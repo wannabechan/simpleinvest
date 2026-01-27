@@ -263,7 +263,7 @@ export default async function handler(req, res) {
       success: true,
       date: dateStr,
       log: updatedTodayLog || null,
-      message: todayLog && has10amPrice ? '이미 로그가 존재합니다.' : '가격 로그를 조회하고 저장했습니다.'
+      message: todayLog && hasLastSlotPrice ? '이미 로그가 존재합니다.' : '가격 로그를 조회하고 저장했습니다.'
     });
   } catch (error) {
     console.error('오늘 가격 로그 조회/저장 실패:', error);
