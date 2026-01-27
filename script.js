@@ -438,11 +438,28 @@ function displayStockCard(data, stockCode) {
             </div>
         </div>
         <div class="log-container">
+            <div class="log-header">
+                <div class="log-delete-buttons">
+                    <button class="log-delete-btn" data-stock-code="${stockCode}" data-days="1">최근 1일 삭제</button>
+                    <button class="log-delete-btn" data-stock-code="${stockCode}" data-days="5">최근 5일 삭제</button>
+                    <button class="log-delete-btn" data-stock-code="${stockCode}" data-days="10">최근 10일 삭제</button>
+                </div>
+            </div>
             <div class="log-content" id="log-${stockCode}"></div>
         </div>
     `;
     
     stocksContainer.appendChild(card);
+    
+    // 삭제 버튼 이벤트 리스너 추가 (이 카드에만)
+    const deleteButtons = card.querySelectorAll('.log-delete-btn');
+    deleteButtons.forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const stockCode = this.getAttribute('data-stock-code');
+            const days = parseInt(this.getAttribute('data-days'));
+            await deleteRecentLogs(stockCode, days);
+        });
+    });
 }
 
 // 날짜를 yyyy-mm-dd 형식으로 변환
@@ -535,6 +552,79 @@ async function displayLog(stockCode) {
     } catch (error) {
         console.error(`로그 표시 중 오류:`, error);
         logElement.innerHTML = '<div style="color: #9aa0a6; font-size: 12px;">로그를 불러올 수 없습니다.</div>';
+    }
+}
+
+// 최근 N일 로그 삭제
+async function deleteRecentLogs(stockCode, days) {
+    if (!confirm(`최근 ${days}일의 로그를 삭제하시겠습니까?`)) {
+        return;
+    }
+    
+    try {
+        // 먼저 로그 데이터 가져오기
+        const apiUrl = `${API_BASE_URL}/api/logs/${stockCode}`;
+        const response = await fetch(apiUrl);
+        
+        if (!response.ok) {
+            console.error(`로그 조회 실패: ${response.status}`);
+            alert('로그를 불러올 수 없습니다.');
+            return;
+        }
+        
+        const data = await response.json();
+        const logData = data.logs || [];
+        
+        if (logData.length === 0) {
+            alert('삭제할 로그가 없습니다.');
+            return;
+        }
+        
+        // 최근 N일의 날짜 목록 생성 (최신 날짜부터)
+        const datesToDelete = logData.slice(0, days).map(entry => entry.date);
+        
+        if (datesToDelete.length === 0) {
+            alert('삭제할 로그가 없습니다.');
+            return;
+        }
+        
+        // 각 날짜에 대해 삭제 API 호출
+        let successCount = 0;
+        let failCount = 0;
+        
+        for (const date of datesToDelete) {
+            try {
+                const deleteResponse = await fetch(`${apiUrl}?date=${date}`, {
+                    method: 'DELETE'
+                });
+                
+                if (deleteResponse.ok) {
+                    successCount++;
+                } else {
+                    failCount++;
+                    console.error(`날짜 ${date} 삭제 실패: ${deleteResponse.status}`);
+                }
+            } catch (error) {
+                failCount++;
+                console.error(`날짜 ${date} 삭제 중 오류:`, error);
+            }
+        }
+        
+        // 삭제 결과 메시지
+        if (successCount > 0) {
+            alert(`최근 ${days}일 중 ${successCount}개의 로그가 삭제되었습니다.${failCount > 0 ? ` (${failCount}개 실패)` : ''}`);
+            
+            // 로그 다시 표시
+            const logElement = document.getElementById(`log-${stockCode}`);
+            if (logElement) {
+                await displayLog(stockCode);
+            }
+        } else {
+            alert('로그 삭제에 실패했습니다.');
+        }
+    } catch (error) {
+        console.error('로그 삭제 중 오류:', error);
+        alert('로그 삭제 중 오류가 발생했습니다.');
     }
 }
 
