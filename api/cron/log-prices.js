@@ -67,6 +67,17 @@ export default async function handler(req, res) {
   }
 
   try {
+    console.log('📊 Cron job 시작');
+    
+    // API 키 확인
+    if (!KIS_APP_KEY || !KIS_APP_SECRET) {
+      console.error('❌ API 키가 설정되지 않았습니다.');
+      return res.status(500).json({ 
+        error: 'API 키가 설정되지 않았습니다.',
+        hint: 'Vercel 환경변수에 KIS_APP_KEY와 KIS_APP_SECRET을 설정해주세요.'
+      });
+    }
+    
     // 한국 시간 기준으로 날짜 계산
     const utcNow = new Date();
     const kstTime = new Date(utcNow.getTime() + 9 * 60 * 60 * 1000);
@@ -81,13 +92,9 @@ export default async function handler(req, res) {
     const dateStr = formatDateForLog(today);
     
     // 9:30, 9:40, 9:50, 10:00 시간대만 처리 (한국 시간 기준)
-    // Vercel은 UTC 시간을 사용하므로, 한국 시간으로 변환 필요
-    // UTC 0:30 = KST 9:30, UTC 0:40 = KST 9:40, UTC 0:50 = KST 9:50, UTC 1:00 = KST 10:00
     const allowedTimes = ['0930', '0940', '0950', '1000'];
     
     // UTC 시간을 KST로 변환 (UTC + 9시간)
-    const utcNow = new Date();
-    const kstTime = new Date(utcNow.getTime() + 9 * 60 * 60 * 1000);
     const kstHours = String(kstTime.getUTCHours()).padStart(2, '0');
     const kstMinutes = String(kstTime.getUTCMinutes()).padStart(2, '0');
     const kstTimeStr = `${kstHours}${kstMinutes}`;
@@ -103,15 +110,39 @@ export default async function handler(req, res) {
     console.log(`📊 가격 로그 기록 시작: ${dateStr} ${logTime} (KST)`);
 
     // 토큰 발급
-    const accessToken = await getAccessToken();
+    let accessToken;
+    try {
+      accessToken = await getAccessToken();
+      console.log('✅ 토큰 발급 완료');
+    } catch (error) {
+      console.error('❌ 토큰 발급 실패:', error.message);
+      return res.status(500).json({ 
+        error: '토큰 발급 실패',
+        message: error.message 
+      });
+    }
     
+    // Redis 클라이언트 확인
     const client = getRedisClient();
     if (!client) {
-      return res.status(500).json({ error: 'Redis 연결을 사용할 수 없습니다.' });
+      console.error('❌ Redis 클라이언트를 사용할 수 없습니다.');
+      return res.status(500).json({ 
+        error: 'Redis 연결을 사용할 수 없습니다.',
+        hint: 'Vercel 환경변수에 REDIS_URL, KV_URL, 또는 UPSTASH_REDIS_URL을 설정해주세요.'
+      });
     }
 
-    if (client.status === 'end' || client.status === 'close') {
-      await client.connect();
+    try {
+      if (client.status === 'end' || client.status === 'close') {
+        await client.connect();
+        console.log('✅ Redis 연결 완료');
+      }
+    } catch (error) {
+      console.error('❌ Redis 연결 실패:', error.message);
+      return res.status(500).json({ 
+        error: 'Redis 연결 실패',
+        message: error.message 
+      });
     }
 
     const results = {};
@@ -184,10 +215,12 @@ export default async function handler(req, res) {
       results: results
     });
   } catch (error) {
-    console.error('Cron job 실행 실패:', error);
+    console.error('❌ Cron job 실행 실패:', error);
+    console.error('에러 스택:', error.stack);
     return res.status(500).json({
       error: 'Cron job execution failed',
-      message: error.message
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }
