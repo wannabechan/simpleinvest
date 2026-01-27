@@ -445,6 +445,20 @@ function displayStockCard(data, stockCode) {
     stocksContainer.appendChild(card);
 }
 
+// 날짜를 yyyy-mm-dd 형식으로 변환
+function formatDateForLog(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+// 주식시장이 개장한 날인지 확인 (주말 제외)
+function isTradingDay(date) {
+    const day = date.getDay();
+    return day !== 0 && day !== 6; // 일요일(0)과 토요일(6)이 아닌 경우
+}
+
 // 로그창에 로그 표시
 async function displayLog(stockCode) {
     const logElement = document.getElementById(`log-${stockCode}`);
@@ -453,6 +467,7 @@ async function displayLog(stockCode) {
     }
     
     try {
+        // 먼저 기존 로그 조회
         const apiUrl = `${API_BASE_URL}/api/logs/${stockCode}`;
         const response = await fetch(apiUrl);
         
@@ -465,42 +480,92 @@ async function displayLog(stockCode) {
         const data = await response.json();
         const logData = data.logs || [];
         
+        // 한국 시간 기준으로 오늘 날짜 확인
+        const now = new Date();
+        const kstTime = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+        const today = new Date(kstTime.getUTCFullYear(), kstTime.getUTCMonth(), kstTime.getUTCDate());
+        const todayStr = formatDateForLog(today);
+        const currentHour = kstTime.getUTCHours();
+        
+        // 11am 이후이고, 주식시장 개장일인 경우
+        if (currentHour >= 11 && isTradingDay(today)) {
+            // 오늘 날짜의 로그 확인
+            const todayLog = logData.find(entry => entry.date === todayStr);
+            const has10amPrice = todayLog && 
+                                 todayLog.prices && 
+                                 todayLog.prices['1000'] !== null && 
+                                 todayLog.prices['1000'] !== undefined;
+            
+            // 당일 로그가 없거나 10am 가격이 없으면 가격 조회 및 저장
+            if (!todayLog || !has10amPrice) {
+                console.log(`📊 ${stockCode} 오늘 가격 로그가 없거나 10am 가격이 없어 조회 시작`);
+                
+                try {
+                    const fetchUrl = `${API_BASE_URL}/api/logs/fetch-today-prices?code=${stockCode}`;
+                    const fetchResponse = await fetch(fetchUrl);
+                    
+                    if (fetchResponse.ok) {
+                        const fetchData = await fetchResponse.json();
+                        console.log(`✅ ${stockCode} 오늘 가격 로그 저장 완료:`, fetchData.message);
+                        
+                        // 저장 후 로그 다시 조회
+                        const updatedResponse = await fetch(apiUrl);
+                        if (updatedResponse.ok) {
+                            const updatedData = await updatedResponse.json();
+                            const updatedLogData = updatedData.logs || [];
+                            renderLogItems(logElement, updatedLogData);
+                            return;
+                        }
+                    } else {
+                        console.error(`오늘 가격 조회 실패: ${fetchResponse.status}`);
+                    }
+                } catch (error) {
+                    console.error(`오늘 가격 조회 중 오류:`, error);
+                }
+            }
+        }
+        
+        // 로그 표시
         if (logData.length === 0) {
             logElement.innerHTML = '<div style="color: #9aa0a6; font-size: 12px;">기록된 로그가 없습니다.</div>';
             return;
         }
         
-        // 로그 항목들을 HTML로 생성 (9:30, 9:40, 9:50, 10:00 시간별 표시)
-        const logItems = logData.map((entry, index) => {
-            const prices = entry.prices || {};
-            const price0930 = prices['0930'] !== null && prices['0930'] !== undefined 
-                ? formatPrice(prices['0930']) 
-                : '-';
-            const price0940 = prices['0940'] !== null && prices['0940'] !== undefined 
-                ? formatPrice(prices['0940']) 
-                : '-';
-            const price0950 = prices['0950'] !== null && prices['0950'] !== undefined 
-                ? formatPrice(prices['0950']) 
-                : '-';
-            const price1000 = prices['1000'] !== null && prices['1000'] !== undefined 
-                ? formatPrice(prices['1000']) 
-                : '-';
-            
-            const borderBottom = index < logData.length - 1 ? 'border-bottom: 1px solid #e8eaed;' : '';
-            return `<div style="margin-bottom: 8px; padding: 4px 0; ${borderBottom}">
-                <span style="color: #5f6368; font-size: 12px; margin-right: 12px; font-weight: 500;">${entry.date}</span>
-                <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">9:30: ${price0930}</span>
-                <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">9:40: ${price0940}</span>
-                <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">9:50: ${price0950}</span>
-                <span style="color: #5f6368; font-size: 12px;">10:00: ${price1000}</span>
-            </div>`;
-        }).join('');
-        
-        logElement.innerHTML = logItems;
+        renderLogItems(logElement, logData);
     } catch (error) {
         console.error(`로그 표시 중 오류:`, error);
         logElement.innerHTML = '<div style="color: #9aa0a6; font-size: 12px;">로그를 불러올 수 없습니다.</div>';
     }
+}
+
+// 로그 항목들을 HTML로 렌더링
+function renderLogItems(logElement, logData) {
+    const logItems = logData.map((entry, index) => {
+        const prices = entry.prices || {};
+        const price0930 = prices['0930'] !== null && prices['0930'] !== undefined 
+            ? formatPrice(prices['0930']) 
+            : '-';
+        const price0940 = prices['0940'] !== null && prices['0940'] !== undefined 
+            ? formatPrice(prices['0940']) 
+            : '-';
+        const price0950 = prices['0950'] !== null && prices['0950'] !== undefined 
+            ? formatPrice(prices['0950']) 
+            : '-';
+        const price1000 = prices['1000'] !== null && prices['1000'] !== undefined 
+            ? formatPrice(prices['1000']) 
+            : '-';
+        
+        const borderBottom = index < logData.length - 1 ? 'border-bottom: 1px solid #e8eaed;' : '';
+        return `<div style="margin-bottom: 8px; padding: 4px 0; ${borderBottom}">
+            <span style="color: #5f6368; font-size: 12px; margin-right: 12px; font-weight: 500;">${entry.date}</span>
+            <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">9:30: ${price0930}</span>
+            <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">9:40: ${price0940}</span>
+            <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">9:50: ${price0950}</span>
+            <span style="color: #5f6368; font-size: 12px;">10:00: ${price1000}</span>
+        </div>`;
+    }).join('');
+    
+    logElement.innerHTML = logItems;
 }
 
 // 날짜 포맷팅
