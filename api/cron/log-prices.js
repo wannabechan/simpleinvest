@@ -52,8 +52,19 @@ function cleanupOldLogs(logData) {
 }
 
 export default async function handler(req, res) {
-  // GitHub Actions나 외부 cron 서비스에서 호출 가능하도록 인증 제거
-  // 필요시 User-Agent나 다른 방법으로 인증 가능
+  // CORS 헤더 설정 (GitHub Actions에서 호출 가능하도록)
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.status(200).end();
+    return;
+  }
+
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
   try {
     // 한국 시간 기준으로 날짜 계산
