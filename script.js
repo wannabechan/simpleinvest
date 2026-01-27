@@ -362,23 +362,13 @@ function displayStockCard(data, stockCode) {
         ? ` <span class="current-price ${currentPriceClass}">${formatPrice(data.currentPrice)}</span>${currentPriceChangeText}`
         : '';
     
-    // 초록색 동그라미 표시 (항상 3개 표시, 조건에 따라 내부 채움)
-    const condition1 = data.condition1 || false;
-    const condition2 = data.condition2 || false;
-    const condition3 = data.condition3 || false;
-    const greenDots = `
-        <span class="green-dot ${condition1 ? 'filled' : ''}"></span>
-        <span class="green-dot ${condition2 ? 'filled' : ''}"></span>
-        <span class="green-dot ${condition3 ? 'filled' : ''}"></span>
-    `;
-    
     // 카드 HTML 생성
     const card = document.createElement('div');
     card.className = 'stock-info';
     card.id = `stock-${stockCode}`;
     card.innerHTML = `
         <div class="info-header">
-            <h2 class="stock-name">${data.name}${greenDots}${currentPriceText}</h2>
+            <h2 class="stock-name">${data.name}${currentPriceText}</h2>
         </div>
         <div class="info-split-container">
             <!-- 좌측: 최근 개장일 바로 이전의 개장일 정보 -->
@@ -453,147 +443,17 @@ function displayStockCard(data, stockCode) {
     `;
     
     stocksContainer.appendChild(card);
-    
-    // 로그 업데이트 (비동기, await 없이 실행)
-    const priceAt10am = data.priceAt10am !== null && data.priceAt10am !== undefined ? data.priceAt10am : null;
-    const priceAt11am = data.priceAt11am !== null && data.priceAt11am !== undefined ? data.priceAt11am : null;
-    const closePrice = data.closePrice || data.latestClose || 0;
-    updateLog(stockCode, latestDate, condition1, condition2, condition3, priceAt10am, priceAt11am, closePrice).catch(err => {
-        console.error(`로그 업데이트 실패 (${stockCode}):`, err);
-    });
 }
 
-// 날짜를 yyyy-mm-dd 형식으로 변환
-function formatDateForLog(date) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-}
-
-// 코스피가 정식으로 개장한 날짜인지 확인 (주말이 아닌 경우)
-function isTradingDay(date) {
-    const day = date.getDay();
-    // 일요일(0)과 토요일(6)이 아닌 경우
-    return day !== 0 && day !== 6;
-}
-
-// Redis에서 로그 데이터 가져오기 (API 호출)
-async function getLogData(stockCode) {
-    try {
-        const apiUrl = `${API_BASE_URL}/api/logs/${stockCode}`;
-        const response = await fetch(apiUrl);
-        
-        if (!response.ok) {
-            console.error(`로그 조회 실패: ${response.status}`);
-            return [];
-        }
-        
-        const data = await response.json();
-        return data.logs || [];
-    } catch (error) {
-        console.error(`로그 조회 중 오류:`, error);
-        return [];
-    }
-}
-
-// Redis에 로그 데이터 저장 (API 호출)
-async function saveLogData(stockCode, date, condition1, condition2, condition3, priceAt10am, priceAt11am, closePrice) {
-    try {
-        const apiUrl = `${API_BASE_URL}/api/logs/${stockCode}`;
-        const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                date: date,
-                condition1: condition1,
-                condition2: condition2,
-                condition3: condition3,
-                priceAt10am: priceAt10am,
-                priceAt11am: priceAt11am,
-                closePrice: closePrice
-            })
-        });
-        
-        if (!response.ok) {
-            console.error(`로그 저장 실패: ${response.status}`);
-            return false;
-        }
-        
-        const data = await response.json();
-        return data.success || false;
-    } catch (error) {
-        console.error(`로그 저장 중 오류:`, error);
-        return false;
-    }
-}
-
-// 로그 업데이트 (오후 5시 이후에만 기록)
-async function updateLog(stockCode, tradingDate, condition1, condition2, condition3, priceAt10am, priceAt11am, closePrice) {
-    const now = new Date();
-    const currentHour = now.getHours();
-    
-    // 오후 5시(17시) 이후가 아니면 기록하지 않음
-    if (currentHour < 17) {
-        return;
-    }
-    
-    // 코스피가 정식으로 개장한 날짜인지 확인
-    if (!isTradingDay(tradingDate)) {
-        return;
-    }
-    
-    // 날짜를 yyyy-mm-dd 형식으로 변환
-    const dateStr = formatDateForLog(tradingDate);
-    
-    // 가격 정보는 항상 최신으로 업데이트해야 하므로 저장 (백엔드에서 이미 존재하면 업데이트)
-    await saveLogData(stockCode, dateStr, condition1, condition2, condition3, priceAt10am, priceAt11am, closePrice);
-    
-    // 로그창 업데이트
-    await displayLog(stockCode);
-}
-
-// 로그창에 로그 표시
+// 로그창에 로그 표시 (기록 기능은 제거, 표시만 유지)
 async function displayLog(stockCode) {
     const logElement = document.getElementById(`log-${stockCode}`);
     if (!logElement) {
         return;
     }
     
-    const logData = await getLogData(stockCode);
-    
-    if (logData.length === 0) {
-        logElement.innerHTML = '<div style="color: #9aa0a6; font-size: 12px;">기록된 로그가 없습니다.</div>';
-        return;
-    }
-    
-    // 로그 항목들을 HTML로 생성
-    const logItems = logData.map((entry, index) => {
-        const greenDots = `
-            <span class="green-dot ${entry.condition1 ? 'filled' : ''}"></span>
-            <span class="green-dot ${entry.condition2 ? 'filled' : ''}"></span>
-            <span class="green-dot ${entry.condition3 ? 'filled' : ''}"></span>
-        `;
-        const priceAt10amText = entry.priceAt10am !== null && entry.priceAt10am !== undefined 
-            ? formatPrice(entry.priceAt10am) 
-            : '-';
-        const priceAt11amText = entry.priceAt11am !== null && entry.priceAt11am !== undefined 
-            ? formatPrice(entry.priceAt11am) 
-            : '-';
-        const closePriceText = entry.closePrice ? formatPrice(entry.closePrice) : '-';
-        const borderBottom = index < logData.length - 1 ? 'border-bottom: 1px solid #e8eaed;' : '';
-        return `<div style="margin-bottom: 8px; padding: 4px 0; ${borderBottom}">
-            <span style="color: #5f6368; font-size: 12px; margin-right: 12px;">${entry.date}</span>
-            <span style="display: inline-flex; align-items: center; gap: 4px; margin-right: 12px;">${greenDots}</span>
-            <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">10am: ${priceAt10amText}</span>
-            <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">11am: ${priceAt11amText}</span>
-            <span style="color: #5f6368; font-size: 12px;">종가: ${closePriceText}</span>
-        </div>`;
-    }).join('');
-    
-    logElement.innerHTML = logItems;
+    // 로그 기록 기능 제거로 인해 빈 상태로 표시
+    logElement.innerHTML = '<div style="color: #9aa0a6; font-size: 12px;">기록된 로그가 없습니다.</div>';
 }
 
 // 날짜 포맷팅
