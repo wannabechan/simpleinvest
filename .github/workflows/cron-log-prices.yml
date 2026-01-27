@@ -1,1 +1,42 @@
+name: 주식 가격 로그 기록
 
+on:
+  schedule:
+    # 한국 시간 기준: 9:30, 9:40, 9:50, 10:00 (UTC: 0:30, 0:40, 0:50, 1:00)
+    # 월~금요일만 실행
+    - cron: '30 0 * * 1-5'  # UTC 0:30 = KST 9:30
+    - cron: '40 0 * * 1-5'  # UTC 0:40 = KST 9:40
+    - cron: '50 0 * * 1-5'  # UTC 0:50 = KST 9:50
+    - cron: '0 1 * * 1-5'   # UTC 1:00 = KST 10:00
+  workflow_dispatch:  # 수동 실행도 가능
+
+jobs:
+  log-prices:
+    runs-on: ubuntu-latest
+    steps:
+      - name: API 호출
+        run: |
+          if [ -z "$VERCEL_URL" ]; then
+            echo "❌ VERCEL_URL이 설정되지 않았습니다."
+            echo "GitHub 저장소 → Settings → Secrets → Actions에서 VERCEL_URL을 설정해주세요."
+            exit 1
+          fi
+          
+          echo "📊 가격 로그 기록 API 호출: $VERCEL_URL/api/cron/log-prices"
+          response=$(curl -s -w "\n%{http_code}" -X GET "$VERCEL_URL/api/cron/log-prices" \
+            -H "User-Agent: GitHub-Actions")
+          
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | sed '$d')
+          
+          echo "HTTP Status: $http_code"
+          echo "Response: $body"
+          
+          if [ "$http_code" -eq 200 ]; then
+            echo "✅ API 호출 성공"
+          else
+            echo "❌ API 호출 실패 (HTTP $http_code)"
+            exit 1
+          fi
+        env:
+          VERCEL_URL: ${{ secrets.VERCEL_URL }}
