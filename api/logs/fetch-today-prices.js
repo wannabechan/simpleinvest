@@ -1,6 +1,6 @@
 // API: 오늘 날짜의 가격 로그 조회 및 저장
 // 경로: /api/logs/fetch-today-prices?code=005930
-// 용도: 11am 이후 웹사이트 접속 시 당일 로그가 없거나 10am 가격이 없을 때 호출
+// 용도: 11am 이후 웹사이트 접속 시 당일 로그가 없거나 10:30 가격이 없을 때 호출
 
 import axios from 'axios';
 import { getAccessToken, getCurrentPrice, getRedisClient, getMinuteData, APP_KEY, APP_SECRET } from '../_shared/kis-api.js';
@@ -33,11 +33,11 @@ function extractPriceAtTime(minuteDataArray, targetTime) {
     return null;
   }
   
-  // targetTime을 HHMM 형식으로 변환 (예: "0930", "0940")
+  // targetTime을 HHMM 형식으로 변환 (예: "0930", "0935")
   const targetHour = targetTime.substring(0, 2);
   const targetMinute = targetTime.substring(2, 4);
   
-  // 정확한 시간대 찾기 (예: 0930, 0940, 0950, 1000)
+  // 정확한 시간대 찾기 (예: 0930~1030, 5분 간격)
   const exactMatch = minuteDataArray.find(m => {
     const time = m.stck_std_time || m.time || '';
     return time === targetTime;
@@ -171,15 +171,15 @@ export default async function handler(req, res) {
     // 오늘 날짜의 로그 찾기
     let todayLog = logData.find(entry => entry.date === dateStr);
     
-    // 10am 가격이 있는지 확인
-    const has10amPrice = todayLog && 
-                         todayLog.prices && 
-                         todayLog.prices['1000'] !== null && 
-                         todayLog.prices['1000'] !== undefined;
+    // 10:30 가격이 있는지 확인 (마지막 시간대)
+    const hasLastSlotPrice = todayLog && 
+                             todayLog.prices && 
+                             todayLog.prices['1030'] !== null && 
+                             todayLog.prices['1030'] !== undefined;
 
-    // 당일 로그가 없거나 10am 가격이 없으면 조회 및 저장
-    if (!todayLog || !has10amPrice) {
-      console.log(`📊 ${stockCode} 오늘 가격 조회 시작 (로그 없음 또는 10am 가격 없음)`);
+    // 당일 로그가 없거나 10:30 가격이 없으면 조회 및 저장
+    if (!todayLog || !hasLastSlotPrice) {
+      console.log(`📊 ${stockCode} 오늘 가격 조회 시작 (로그 없음 또는 10:30 가격 없음)`);
       
       if (!todayLog) {
         todayLog = {
@@ -189,8 +189,8 @@ export default async function handler(req, res) {
         logData.push(todayLog);
       }
 
-      // 9:30~10:00 구간의 분봉 데이터를 한 번에 조회
-      console.log(`📊 ${stockCode} 분봉 데이터 조회 시작 (9:30~10:00)`);
+      // 9:30~10:30 구간의 분봉 데이터를 한 번에 조회
+      console.log(`📊 ${stockCode} 분봉 데이터 조회 시작 (9:30~10:30)`);
       const minuteDataArray = await getMinuteData(
         stockCode, 
         dateStr, 
@@ -198,10 +198,10 @@ export default async function handler(req, res) {
         KIS_APP_KEY, 
         KIS_APP_SECRET, 
         '0930', 
-        '1000'
+        '1030'
       );
       
-      const targetTimes = ['0930', '0940', '0950', '1000'];
+      const targetTimes = ['0930', '0935', '0940', '0945', '0950', '0955', '1000', '1005', '1010', '1015', '1020', '1025', '1030'];
       const prices = {};
       
       if (minuteDataArray && minuteDataArray.length > 0) {
@@ -251,7 +251,7 @@ export default async function handler(req, res) {
       
       console.log(`✅ ${stockCode} 오늘 가격 로그 저장 완료`);
     } else {
-      console.log(`✅ ${stockCode} 오늘 로그가 이미 존재하고 10am 가격도 있음`);
+      console.log(`✅ ${stockCode} 오늘 로그가 이미 존재하고 10:30 가격도 있음`);
     }
 
     // 저장된 로그 반환
