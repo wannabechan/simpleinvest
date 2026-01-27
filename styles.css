@@ -292,12 +292,12 @@ body {
 .log-refresh-btn:hover {
     background-color: #e8eaed;
     border-color: #bdc1c6;
-    transform: rotate(90deg);
+    transform: rotate(180deg);
 }
 
 .log-refresh-btn:active {
     background-color: #dadce0;
-    transform: rotate(180deg);
+    transform: rotate(360deg);
 }
 
 .log-refresh-btn:disabled {
