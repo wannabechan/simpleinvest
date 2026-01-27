@@ -1,9 +1,12 @@
 // Vercel Serverless Function: 종목별 로그 저장/조회
 // 경로: /api/logs/[code]
 
-import { getRedisClient } from '../_shared/kis-api.js';
+import { getRedisClient, getAccessToken, getDailyOhlcRange, getTodayString } from '../_shared/kis-api.js';
 
 const REDIS_LOG_KEY_PREFIX = 'stock-log-';
+const REDIS_OHLC_KEY_PREFIX = 'stock-ohlc-';
+const OHLC_CACHE_DAYS = 60;
+const OHLC_FETCH_CALENDAR_DAYS = 90; // 60거래일 확보용
 
 export default async function handler(req, res) {
   // CORS 헤더 설정
@@ -37,26 +40,56 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
-      // 로그 조회 (최근 60일만 반환)
+      // 로그 조회 (최근 60일만 반환) + OHLC 캐시(날짜별 시가/종가/최고/최저/중간값)
       try {
         const logDataStr = await client.get(redisKey);
+        let filteredLogs = [];
         if (logDataStr) {
           const logData = JSON.parse(logDataStr);
-          
-          // 최근 60일만 필터링
           const now = new Date();
           const cutoffDate = new Date(now);
           cutoffDate.setDate(cutoffDate.getDate() - 60);
-          
-          const filteredLogs = logData.filter(entry => {
+          filteredLogs = logData.filter(entry => {
             const entryDate = new Date(entry.date);
             return entryDate >= cutoffDate;
           });
-          
-          return res.status(200).json({ logs: filteredLogs });
-        } else {
-          return res.status(200).json({ logs: [] });
         }
+
+        // OHLC 캐시: Redis에 있으면 사용, 없으면 KIS에서 조회 후 저장
+        const ohlcKey = `${REDIS_OHLC_KEY_PREFIX}${stockCode}`;
+        let ohlc = [];
+        const ohlcStr = await client.get(ohlcKey);
+        if (ohlcStr) {
+          try {
+            ohlc = JSON.parse(ohlcStr);
+          } catch (_) {
+            ohlc = [];
+          }
+        }
+        if (ohlc.length === 0 && process.env.KIS_APP_KEY && process.env.KIS_APP_SECRET) {
+          try {
+            const today = getTodayString();
+            const end = new Date();
+            const start = new Date(end);
+            start.setDate(start.getDate() - OHLC_FETCH_CALENDAR_DAYS);
+            const startStr = `${start.getFullYear()}${String(start.getMonth() + 1).padStart(2, '0')}${String(start.getDate()).padStart(2, '0')}`;
+            const token = await getAccessToken();
+            const rows = await getDailyOhlcRange(
+              stockCode,
+              startStr,
+              today,
+              token,
+              process.env.KIS_APP_KEY,
+              process.env.KIS_APP_SECRET
+            );
+            ohlc = rows.slice(0, OHLC_CACHE_DAYS);
+            await client.set(ohlcKey, JSON.stringify(ohlc));
+          } catch (err) {
+            console.error(`❌ ${stockCode} OHLC 캐시 조회 실패:`, err.message);
+          }
+        }
+
+        return res.status(200).json({ logs: filteredLogs, ohlc });
       } catch (error) {
         console.error(`❌ ${stockCode} 로그 조회 실패:`, error.message);
         return res.status(500).json({ error: '로그 조회 중 오류가 발생했습니다.' });
