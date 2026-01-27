@@ -445,15 +445,62 @@ function displayStockCard(data, stockCode) {
     stocksContainer.appendChild(card);
 }
 
-// 로그창에 로그 표시 (기록 기능은 제거, 표시만 유지)
+// 로그창에 로그 표시
 async function displayLog(stockCode) {
     const logElement = document.getElementById(`log-${stockCode}`);
     if (!logElement) {
         return;
     }
     
-    // 로그 기록 기능 제거로 인해 빈 상태로 표시
-    logElement.innerHTML = '<div style="color: #9aa0a6; font-size: 12px;">기록된 로그가 없습니다.</div>';
+    try {
+        const apiUrl = `${API_BASE_URL}/api/logs/${stockCode}`;
+        const response = await fetch(apiUrl);
+        
+        if (!response.ok) {
+            console.error(`로그 조회 실패: ${response.status}`);
+            logElement.innerHTML = '<div style="color: #9aa0a6; font-size: 12px;">로그를 불러올 수 없습니다.</div>';
+            return;
+        }
+        
+        const data = await response.json();
+        const logData = data.logs || [];
+        
+        if (logData.length === 0) {
+            logElement.innerHTML = '<div style="color: #9aa0a6; font-size: 12px;">기록된 로그가 없습니다.</div>';
+            return;
+        }
+        
+        // 로그 항목들을 HTML로 생성 (9:30, 9:40, 9:50, 10:00 시간별 표시)
+        const logItems = logData.map((entry, index) => {
+            const prices = entry.prices || {};
+            const price0930 = prices['0930'] !== null && prices['0930'] !== undefined 
+                ? formatPrice(prices['0930']) 
+                : '-';
+            const price0940 = prices['0940'] !== null && prices['0940'] !== undefined 
+                ? formatPrice(prices['0940']) 
+                : '-';
+            const price0950 = prices['0950'] !== null && prices['0950'] !== undefined 
+                ? formatPrice(prices['0950']) 
+                : '-';
+            const price1000 = prices['1000'] !== null && prices['1000'] !== undefined 
+                ? formatPrice(prices['1000']) 
+                : '-';
+            
+            const borderBottom = index < logData.length - 1 ? 'border-bottom: 1px solid #e8eaed;' : '';
+            return `<div style="margin-bottom: 8px; padding: 4px 0; ${borderBottom}">
+                <span style="color: #5f6368; font-size: 12px; margin-right: 12px; font-weight: 500;">${entry.date}</span>
+                <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">9:30: ${price0930}</span>
+                <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">9:40: ${price0940}</span>
+                <span style="color: #5f6368; font-size: 12px; margin-right: 8px;">9:50: ${price0950}</span>
+                <span style="color: #5f6368; font-size: 12px;">10:00: ${price1000}</span>
+            </div>`;
+        }).join('');
+        
+        logElement.innerHTML = logItems;
+    } catch (error) {
+        console.error(`로그 표시 중 오류:`, error);
+        logElement.innerHTML = '<div style="color: #9aa0a6; font-size: 12px;">로그를 불러올 수 없습니다.</div>';
+    }
 }
 
 // 날짜 포맷팅
