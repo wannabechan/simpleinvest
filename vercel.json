@@ -7,16 +7,6 @@
       "includeFiles": "node_modules/**"
     }
   },
-  "crons": [
-    {
-      "path": "/api/cron/log-prices",
-      "schedule": "30,40,50 0 * * 1-5"
-    },
-    {
-      "path": "/api/cron/log-prices",
-      "schedule": "0 1 * * 1-5"
-    }
-  ],
   "rewrites": [
     {
       "source": "/api/(.*)",
