@@ -3,7 +3,7 @@
 // 용도: 11am 이후 웹사이트 접속 시 당일 로그가 없거나 10am 가격이 없을 때 호출
 
 import axios from 'axios';
-import { getAccessToken, getCurrentPrice, getRedisClient, APP_KEY, APP_SECRET } from '../_shared/kis-api.js';
+import { getAccessToken, getCurrentPrice, getRedisClient, getMinuteData, APP_KEY, APP_SECRET } from '../_shared/kis-api.js';
 
 // 환경변수에서 API 키 가져오기
 const KIS_APP_KEY = process.env.KIS_APP_KEY || APP_KEY;
@@ -27,61 +27,54 @@ function formatDateForLog(date) {
   return `${year}-${month}-${day}`;
 }
 
-// 분봉 데이터 조회 (특정 시간대)
-async function getMinuteDataAtTime(stockCode, dateStr, targetTime, accessToken) {
-  try {
-    // targetTime을 HHMM 형식으로 변환 (예: "0930", "0940")
-    const hour = targetTime.substring(0, 2);
-    const minute = targetTime.substring(2, 4);
-    const startTime = `${hour}${minute}`;
-    const endTime = `${hour}${String(parseInt(minute) + 1).padStart(2, '0')}`;
-    
-    const response = await axios.get(
-      'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice',
-      {
-        params: {
-          FID_COND_MRKT_DIV_CODE: 'J',
-          FID_INPUT_ISCD: stockCode,
-          FID_INPUT_HOUR_1: startTime,
-          FID_INPUT_HOUR_2: endTime,
-          FID_CHART_DIV_CODE: 'M', // 분봉
-          FID_CHART_INTER: '1', // 1분봉
-          FID_ORG_ADJ_PRC: '0' // 수정주가 미반영
-        },
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'appkey': KIS_APP_KEY,
-          'appsecret': KIS_APP_SECRET,
-          'tr_id': 'FHKST03010200',
-          'Content-Type': 'application/json'
-        },
-        timeout: 30000
-      }
-    );
-    
-    if (response.data.output && response.data.output.length > 0) {
-      // 해당 시간대의 첫 번째 데이터 사용
-      const minuteData = response.data.output.find(m => {
-        const time = m.stck_std_time || m.time || '';
-        return time >= startTime && time <= endTime;
-      });
-      if (minuteData) {
-        return parseInt(minuteData.stck_prpr || minuteData.price || 0);
-      }
-      // 정확한 시간대를 찾지 못하면 가장 가까운 시간대 사용
-      const closest = response.data.output.find(m => {
-        const time = m.stck_std_time || m.time || '';
-        return time >= startTime;
-      });
-      if (closest) {
-        return parseInt(closest.stck_prpr || closest.price || 0);
-      }
-    }
-    return null;
-  } catch (error) {
-    console.error(`분봉 데이터 조회 실패 (${stockCode}, ${targetTime}):`, error.message);
+// 분봉 데이터에서 특정 시간대의 가격 추출
+function extractPriceAtTime(minuteDataArray, targetTime) {
+  if (!minuteDataArray || minuteDataArray.length === 0) {
     return null;
   }
+  
+  // targetTime을 HHMM 형식으로 변환 (예: "0930", "0940")
+  const targetHour = targetTime.substring(0, 2);
+  const targetMinute = targetTime.substring(2, 4);
+  
+  // 정확한 시간대 찾기 (예: 0930, 0940, 0950, 1000)
+  const exactMatch = minuteDataArray.find(m => {
+    const time = m.stck_std_time || m.time || '';
+    return time === targetTime;
+  });
+  
+  if (exactMatch) {
+    const price = parseInt(exactMatch.stck_prpr || exactMatch.price || 0);
+    if (price > 0) {
+      return price;
+    }
+  }
+  
+  // 정확한 시간대를 찾지 못하면 가장 가까운 시간대 사용 (1분 이내)
+  const closest = minuteDataArray.find(m => {
+    const time = m.stck_std_time || m.time || '';
+    if (!time || time.length < 4) return false;
+    
+    const dataHour = time.substring(0, 2);
+    const dataMinute = time.substring(2, 4);
+    
+    // 같은 시간대이고 분 차이가 1분 이내
+    if (dataHour === targetHour) {
+      const minuteDiff = Math.abs(parseInt(dataMinute) - parseInt(targetMinute));
+      return minuteDiff <= 1;
+    }
+    
+    return false;
+  });
+  
+  if (closest) {
+    const price = parseInt(closest.stck_prpr || closest.price || 0);
+    if (price > 0) {
+      return price;
+    }
+  }
+  
+  return null;
 }
 
 // 로그 데이터에서 오래된 항목 삭제 (최근 60일만 유지)
@@ -196,51 +189,54 @@ export default async function handler(req, res) {
         logData.push(todayLog);
       }
 
-      // 9:30, 9:40, 9:50, 10:00 가격 조회
+      // 9:30~10:00 구간의 분봉 데이터를 한 번에 조회
+      console.log(`📊 ${stockCode} 분봉 데이터 조회 시작 (9:30~10:00)`);
+      const minuteDataArray = await getMinuteData(
+        stockCode, 
+        dateStr, 
+        accessToken, 
+        KIS_APP_KEY, 
+        KIS_APP_SECRET, 
+        '0930', 
+        '1000'
+      );
+      
       const targetTimes = ['0930', '0940', '0950', '1000'];
       const prices = {};
-
-      // 분봉 데이터는 현재 거래일의 데이터만 조회 가능하므로, 
-      // 오늘 날짜의 분봉 데이터를 조회 시도
-      for (const targetTime of targetTimes) {
-        try {
-          // 분봉 데이터로 조회 시도 (오늘 날짜 기준)
-          const price = await getMinuteDataAtTime(stockCode, dateStr, targetTime, accessToken);
+      
+      if (minuteDataArray && minuteDataArray.length > 0) {
+        console.log(`✅ ${stockCode} 분봉 데이터 조회 성공: ${minuteDataArray.length}개 데이터`);
+        
+        // 각 시간대별로 가격 추출 (실패한 경우 null로 저장)
+        for (const targetTime of targetTimes) {
+          const price = extractPriceAtTime(minuteDataArray, targetTime);
           if (price && price > 0) {
             prices[targetTime] = price;
-            console.log(`✅ ${stockCode} ${targetTime} 가격 조회 성공: ${price}`);
+            console.log(`✅ ${stockCode} ${targetTime} 가격 추출: ${price}`);
           } else {
-            // 분봉 데이터가 없으면 현재가 사용 (과거 시간대이므로 정확하지 않을 수 있음)
-            // 하지만 11am 이후이므로 이미 지난 시간대이므로 분봉 데이터가 있을 수 있음
-            console.log(`⚠️ ${stockCode} ${targetTime} 분봉 데이터 없음`);
+            // 추출 실패한 경우 null로 저장 (프론트엔드에서 '-'로 표시)
+            prices[targetTime] = null;
+            console.log(`⚠️ ${stockCode} ${targetTime} 가격 추출 실패 → null 저장 (프론트엔드에서 '-'로 표시)`);
           }
-        } catch (error) {
-          console.error(`❌ ${stockCode} ${targetTime} 가격 조회 실패:`, error.message);
         }
-      }
-      
-      // 분봉 데이터로 조회한 가격이 없으면 현재가로 대체 (최소한의 정보 제공)
-      // 하지만 정확하지 않을 수 있으므로 주의
-      if (Object.keys(prices).length === 0) {
-        console.log(`⚠️ ${stockCode} 분봉 데이터 조회 실패, 현재가로 대체 시도`);
-        try {
-          const currentPrice = await getCurrentPrice(stockCode, accessToken, KIS_APP_KEY, KIS_APP_SECRET);
-          if (currentPrice && currentPrice > 0) {
-            // 모든 시간대에 현재가 사용 (정확하지 않지만 최소한의 정보)
-            targetTimes.forEach(time => {
-              prices[time] = currentPrice;
-            });
-            console.log(`⚠️ ${stockCode} 현재가로 대체: ${currentPrice} (정확하지 않을 수 있음)`);
-          }
-        } catch (error) {
-          console.error(`❌ ${stockCode} 현재가 조회 실패:`, error.message);
-        }
+      } else {
+        console.log(`⚠️ ${stockCode} 분봉 데이터 조회 실패 또는 데이터 없음 → 모든 시간대 null 저장`);
+        // 분봉 데이터가 없으면 모든 시간대를 null로 저장 (프론트엔드에서 '-'로 표시)
+        targetTimes.forEach(time => {
+          prices[time] = null;
+        });
       }
       
       console.log(`📊 ${stockCode} 조회된 가격:`, prices);
 
-      // 조회한 가격을 로그에 저장
-      Object.assign(todayLog.prices, prices);
+      // 모든 시간대의 가격을 로그에 저장 (null 포함)
+      // 기존에 값이 있으면 유지하되, 조회한 값이 있으면 업데이트
+      targetTimes.forEach(time => {
+        // 조회한 값이 있으면 업데이트 (null도 포함)
+        if (prices.hasOwnProperty(time)) {
+          todayLog.prices[time] = prices[time];
+        }
+      });
 
       // 오래된 로그 삭제 (최근 60일만 유지)
       logData = cleanupOldLogs(logData);
