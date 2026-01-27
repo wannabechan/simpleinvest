@@ -52,12 +52,8 @@ function cleanupOldLogs(logData) {
 }
 
 export default async function handler(req, res) {
-  // Vercel Cron은 자동으로 인증 헤더를 추가합니다
-  // 수동 호출을 방지하려면 Vercel Cron Secret 확인 (선택사항)
-  // const authHeader = req.headers['authorization'];
-  // if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-  //   return res.status(401).json({ error: 'Unauthorized' });
-  // }
+  // GitHub Actions나 외부 cron 서비스에서 호출 가능하도록 인증 제거
+  // 필요시 User-Agent나 다른 방법으로 인증 가능
 
   try {
     // 한국 시간 기준으로 날짜 계산
