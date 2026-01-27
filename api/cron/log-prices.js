@@ -1,6 +1,6 @@
 // Vercel Cron Job: 주식 가격 로그 기록
 // 경로: /api/cron/log-prices
-// 스케줄: 주식시장 개장일 9:30, 9:40, 9:50, 10:00
+// 스케줄: 주식시장 개장일 9:30~10:30 (5분 간격)
 
 import axios from 'axios';
 import { getAccessToken, getTodayString, getCurrentPrice, getRedisClient, APP_KEY, APP_SECRET } from '../_shared/kis-api.js';
@@ -91,8 +91,8 @@ export default async function handler(req, res) {
 
     const dateStr = formatDateForLog(today);
     
-    // 9:30, 9:40, 9:50, 10:00 시간대만 처리 (한국 시간 기준)
-    const allowedTimes = ['0930', '0940', '0950', '1000'];
+    // 9:30~10:30 KST (5분 간격) 시간대만 처리
+    const allowedTimes = ['0930', '0935', '0940', '0945', '0950', '0955', '1000', '1005', '1010', '1015', '1020', '1025', '1030'];
     
     // UTC 시간을 KST로 변환 (UTC + 9시간)
     const kstHours = String(kstTime.getUTCHours()).padStart(2, '0');
