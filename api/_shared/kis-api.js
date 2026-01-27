@@ -532,3 +532,57 @@ export async function getMinuteData(stockCode, date, accessToken, appKey, appSec
     return null;
   }
 }
+
+// 일자별 OHLC 조회 (날짜 범위, 최근 60일용 캐시 데이터)
+// 반환: [{ date: "yyyy-mm-dd", open, close, high, low, midpoint }, ...]
+export async function getDailyOhlcRange(stockCode, startYYYYMMDD, endYYYYMMDD, accessToken, appKey, appSecret) {
+  if (!appKey || !appSecret) {
+    return [];
+  }
+  try {
+    const response = await axios.get(
+      'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-daily-price',
+      {
+        params: {
+          FID_COND_MRKT_DIV_CODE: 'J',
+          FID_INPUT_ISCD: stockCode,
+          FID_INPUT_DATE_1: startYYYYMMDD,
+          FID_INPUT_DATE_2: endYYYYMMDD,
+          FID_PERIOD_DIV_CODE: 'D',
+          FID_ORG_ADJ_PRC: '0'
+        },
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'appkey': appKey,
+          'appsecret': appSecret,
+          'tr_id': 'FHKST01010400',
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      }
+    );
+    if (!response.data.output || !Array.isArray(response.data.output)) {
+      return [];
+    }
+    return response.data.output.map(row => {
+      const yyyymmdd = String(row.stck_bsop_date || '');
+      const date = yyyymmdd.length === 8
+        ? `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`
+        : '';
+      const high = parseInt(row.stck_hgpr, 10) || 0;
+      const low = parseInt(row.stck_lwpr, 10) || 0;
+      const midpoint = (high + low) / 2;
+      return {
+        date,
+        open: parseInt(row.stck_oprc, 10) || 0,
+        close: parseInt(row.stck_clpr, 10) || 0,
+        high,
+        low,
+        midpoint
+      };
+    }).filter(r => r.date);
+  } catch (error) {
+    console.error(`❌ ${stockCode} 일자별 OHLC 조회 실패:`, error.message);
+    return [];
+  }
+}
