@@ -344,6 +344,7 @@ body {
 
 .log-content {
     height: 150px;
+    overflow-x: hidden;
     overflow-y: auto;
     background-color: #f8f9fa;
     border: 1px solid #e8eaed;

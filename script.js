@@ -510,6 +510,7 @@ async function displayLog(stockCode) {
         
         const data = await response.json();
         const logData = data.logs || [];
+        const ohlc = data.ohlc || [];
         
         // 로그 표시
         if (logData.length === 0) {
@@ -517,7 +518,7 @@ async function displayLog(stockCode) {
             return;
         }
         
-        renderLogItems(logElement, logData);
+        renderLogItems(logElement, logData, ohlc);
     } catch (error) {
         console.error(`로그 표시 중 오류:`, error);
         logElement.innerHTML = '<div style="color: #9aa0a6; font-size: 12px;">로그를 불러올 수 없습니다.</div>';
@@ -661,24 +662,52 @@ async function deleteRecentLogs(stockCode, days) {
 // 로그 기록 시간대 (9:30~10:30 KST, 5분 간격)
 const LOG_TIME_SLOTS = ['0930', '0935', '0940', '0945', '0950', '0955', '1000', '1005', '1010', '1015', '1020', '1025', '1030'];
 
-// HHMM → "9:30" 형식 표시
-function formatTimeLabel(hhmm) {
-    const h = hhmm.slice(0, 2);
-    const m = hhmm.slice(2, 4);
-    return `${parseInt(h, 10)}:${m}`;
+// 해당 날짜의 직전 개장일 문자열 반환 (yyyy-mm-dd)
+function prevTradingDay(dateStr) {
+    const d = new Date(dateStr + 'T12:00:00');
+    if (isNaN(d.getTime())) return '';
+    d.setDate(d.getDate() - 1);
+    while (d.getDay() === 0 || d.getDay() === 6) {
+        d.setDate(d.getDate() - 1);
+    }
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
 }
 
-// 로그 항목들을 HTML로 렌더링
-function renderLogItems(logElement, logData) {
+// OHLC에서 날짜별 중간값 맵 생성 { "yyyy-mm-dd": midpoint }
+function ohlcMidpointMap(ohlc) {
+    const map = {};
+    (ohlc || []).forEach(row => {
+        if (row.date && row.midpoint != null) {
+            map[row.date] = row.midpoint;
+        }
+    });
+    return map;
+}
+
+// 로그 항목들을 HTML로 렌더링 (ohlc로 직전 개장일 중간값 대비 색상 적용)
+function renderLogItems(logElement, logData, ohlc) {
+    const midpointByDate = ohlcMidpointMap(ohlc || []);
     const logItems = logData.map((entry, index) => {
         const prices = entry.prices || {};
+        const prevDate = prevTradingDay(entry.date);
+        const midpoint = prevDate ? (midpointByDate[prevDate] ?? null) : null;
         const timeSpans = LOG_TIME_SLOTS.map(hhmm => {
             const val = prices[hhmm];
-            const disp = (val !== null && val !== undefined) ? formatPrice(val) : '-';
-            return `<span style="color: #5f6368; font-size: 12px; margin-right: 6px; white-space: nowrap;">${formatTimeLabel(hhmm)}: ${disp}</span>`;
+            const hasVal = val !== null && val !== undefined && typeof val === 'number';
+            const disp = hasVal ? formatPrice(val) : '-';
+            let color = '#5f6368';
+            if (hasVal && midpoint != null) {
+                if (val > midpoint) color = '#c5221f';
+                else if (val < midpoint) color = '#1a73e8';
+                else color = '#202124';
+            }
+            return `<span style="color: ${color}; font-size: 12px; margin-right: 6px;">${hhmm} ${disp}</span>`;
         }).join('');
         const borderBottom = index < logData.length - 1 ? 'border-bottom: 1px solid #e8eaed;' : '';
-        return `<div style="margin-bottom: 8px; padding: 4px 0; ${borderBottom}">
+        return `<div style="margin-bottom: 8px; padding: 4px 0; ${borderBottom}; overflow-wrap: break-word;">
             <span style="color: #5f6368; font-size: 12px; margin-right: 10px; font-weight: 500;">${entry.date}</span>
             ${timeSpans}
         </div>`;
