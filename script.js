@@ -509,8 +509,20 @@ async function displayLog(stockCode) {
         }
         
         const data = await response.json();
-        const logData = data.logs || [];
+        let logData = data.logs || [];
         const ohlc = data.ohlc || [];
+        
+        // 오늘(KST)이 거래일이면, 당일 로그가 없을 때 placeholder 행 추가 (항상 당일 행 표시)
+        const now = new Date();
+        const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+        const today = new Date(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate());
+        const todayStr = formatDateForLog(today);
+        if (isTradingDay(today)) {
+            const hasToday = logData.some(e => e.date === todayStr);
+            if (!hasToday) {
+                logData = [{ date: todayStr, prices: {} }, ...logData];
+            }
+        }
         
         // 로그 표시
         if (logData.length === 0) {
