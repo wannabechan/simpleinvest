@@ -52,10 +52,10 @@ function cleanupOldLogs(logData) {
 }
 
 export default async function handler(req, res) {
-  // CORS 헤더 설정 (GitHub Actions에서 호출 가능하도록)
+  // CORS 헤더 설정 (GitHub Actions, cron-job.org에서 호출 가능하도록)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Cron-Secret');
 
   if (req.method === 'OPTIONS') {
     res.status(200).end();
@@ -64,6 +64,19 @@ export default async function handler(req, res) {
 
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // CRON_SECRET 옵션 인증: 설정된 경우에만 검사
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret) {
+    const authHeader = (req.headers.authorization || '').trim();
+    const xCronSecret = (req.headers['x-cron-secret'] || '').trim();
+    const validBearer = authHeader === `Bearer ${cronSecret}`;
+    const validHeader = xCronSecret === cronSecret;
+    if (!validBearer && !validHeader) {
+      console.warn('❌ Cron 인증 실패: CRON_SECRET 불일치 또는 누락');
+      return res.status(401).json({ error: 'Unauthorized', message: 'Invalid or missing cron secret' });
+    }
   }
 
   try {
