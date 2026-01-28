@@ -1,14 +1,8 @@
 name: 주식 가격 로그 기록
 
+# 주기 실행은 cron-job.org 사용. 여기서는 수동 실행(백업/테스트)만 가능
 on:
-  schedule:
-    # 한국 시간 기준: 9:30, 9:40, 9:50, 10:00 (UTC: 0:30, 0:40, 0:50, 1:00)
-    # 월~금요일만 실행
-    - cron: '30 0 * * 1-5'  # UTC 0:30 = KST 9:30
-    - cron: '40 0 * * 1-5'  # UTC 0:40 = KST 9:40
-    - cron: '50 0 * * 1-5'  # UTC 0:50 = KST 9:50
-    - cron: '0 1 * * 1-5'   # UTC 1:00 = KST 10:00
-  workflow_dispatch:  # 수동 실행도 가능
+  workflow_dispatch:
 
 jobs:
   log-prices:
@@ -18,25 +12,50 @@ jobs:
         run: |
           if [ -z "$VERCEL_URL" ]; then
             echo "❌ VERCEL_URL이 설정되지 않았습니다."
-            echo "GitHub 저장소 → Settings → Secrets → Actions에서 VERCEL_URL을 설정해주세요."
+            echo "GitHub 저장소 → Settings → Secrets and variables → Actions → New repository secret"
+            echo "Name: VERCEL_URL"
+            echo "Value: https://your-project.vercel.app (실제 Vercel 배포 URL)"
             exit 1
           fi
           
-          echo "📊 가격 로그 기록 API 호출: $VERCEL_URL/api/cron/log-prices"
-          response=$(curl -s -w "\n%{http_code}" -X GET "$VERCEL_URL/api/cron/log-prices" \
-            -H "User-Agent: GitHub-Actions")
+          echo "📊 가격 로그 기록 API 호출 시작"
+          echo "URL: $VERCEL_URL/api/cron/log-prices"
+          
+          if [ -n "$CRON_SECRET" ]; then
+            response=$(curl -s -w "\n%{http_code}" -X GET "$VERCEL_URL/api/cron/log-prices" \
+              -H "User-Agent: GitHub-Actions" \
+              -H "Accept: application/json" \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              --max-time 60)
+          else
+            response=$(curl -s -w "\n%{http_code}" -X GET "$VERCEL_URL/api/cron/log-prices" \
+              -H "User-Agent: GitHub-Actions" \
+              -H "Accept: application/json" \
+              --max-time 60)
+          fi
           
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | sed '$d')
           
+          echo ""
+          echo "=== 응답 정보 ==="
           echo "HTTP Status: $http_code"
-          echo "Response: $body"
+          echo "Response Body:"
+          echo "$body" | head -20
+          echo ""
           
           if [ "$http_code" -eq 200 ]; then
             echo "✅ API 호출 성공"
+            exit 0
           else
             echo "❌ API 호출 실패 (HTTP $http_code)"
+            echo ""
+            echo "가능한 원인:"
+            echo "1. VERCEL_URL이 잘못되었거나 설정되지 않음"
+            echo "2. API 엔드포인트가 배포되지 않음"
+            echo "3. 서버 오류 발생"
             exit 1
           fi
         env:
           VERCEL_URL: ${{ secrets.VERCEL_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
