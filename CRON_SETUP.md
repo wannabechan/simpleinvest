@@ -101,18 +101,18 @@ cron-job.org에서 **타임존**을 선택할 수 있으면:
 
 ---
 
-### 방법 2: GitHub Actions (무료, 시각 지연 가능)
+### 방법 2: GitHub Actions (수동 실행만 — 백업/테스트용)
 
-GitHub Actions를 사용할 수도 있지만, **실제 실행 시각이 9:30~10:30에서 많이 밀리는 경우** API가 “기록 구간 아님”으로 판단해 Redis에 저장하지 않습니다. 시각 정확도가 중요하면 **방법 1 (cron-job.org)** 를 쓰는 것이 좋습니다.
+**주기 실행은 cron-job.org**에서 하고, GitHub Actions에는 **스케줄을 두지 않음**. Actions 탭에서 **Run workflow**로 필요할 때만 수동 호출(백업·테스트)용으로 사용합니다.
 
 #### 설정 단계
 
-1. **워크플로우 파일**: `.github/workflows/cron-log-prices.yml` (이미 있음)
+1. **워크플로우 파일**: `.github/workflows/cron-log-prices.yml` (스케줄 제거됨, workflow_dispatch만)
 2. **GitHub Secrets**:  
    저장소 → **Settings** → **Secrets and variables** → **Actions**  
-   - `VERCEL_URL` = `https://본인프로젝트.vercel.app`
-3. **자동 실행**: 스케줄대로 실행됨 (지연 가능)
-4. **수동 실행**: Actions 탭 → **주식 가격 로그 기록** → **Run workflow**
+   - `VERCEL_URL` = `https://본인프로젝트.vercel.app`  
+   - (CRON_SECRET 사용 시) `CRON_SECRET` = Vercel과 동일한 값
+3. **수동 실행**: Actions 탭 → **주식 가격 로그 기록** → **Run workflow**
 
 ---
 
