@@ -10,7 +10,7 @@ const KIS_APP_KEY = process.env.KIS_APP_KEY || APP_KEY;
 const KIS_APP_SECRET = process.env.KIS_APP_SECRET || APP_SECRET;
 
 // 등록된 종목 코드 목록
-const STOCK_CODES = ['005930', '000660', '005380', '207940', '006400'];
+const STOCK_CODES = ['005930', '000660', '005380', '207940', '006400', '005490', '105560', '051910'];
 
 // Redis 키
 const REDIS_LOG_KEY_PREFIX = 'stock-log-';
