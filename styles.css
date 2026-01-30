@@ -267,12 +267,6 @@ body {
     border-bottom: 1px solid #e8eaed;
 }
 
-.log-delete-buttons {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-
 .log-refresh-btn {
     width: 32px;
     height: 32px;
@@ -309,31 +303,6 @@ body {
 .log-refresh-btn svg {
     width: 16px;
     height: 16px;
-}
-
-.log-delete-btn {
-    padding: 6px 12px;
-    font-size: 12px;
-    background-color: #f1f3f4;
-    color: #5f6368;
-    border: 1px solid #dadce0;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background-color 0.2s, border-color 0.2s;
-}
-
-.log-delete-btn:hover {
-    background-color: #e8eaed;
-    border-color: #bdc1c6;
-}
-
-.log-delete-btn:active {
-    background-color: #dadce0;
-}
-
-.log-delete-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
 }
 
 .log-container {
@@ -605,15 +574,6 @@ body {
     .log-header {
         margin-bottom: 6px;
         padding-bottom: 6px;
-    }
-    
-    .log-delete-buttons {
-        gap: 6px;
-    }
-    
-    .log-delete-btn {
-        padding: 5px 10px;
-        font-size: 11px;
     }
     
     .log-refresh-btn {

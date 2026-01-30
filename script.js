@@ -438,11 +438,6 @@ function displayStockCard(data, stockCode) {
         </div>
         <div class="log-container">
             <div class="log-header">
-                <div class="log-delete-buttons">
-                    <button class="log-delete-btn" data-stock-code="${stockCode}" data-days="1">최근 1일 삭제</button>
-                    <button class="log-delete-btn" data-stock-code="${stockCode}" data-days="5">최근 5일 삭제</button>
-                    <button class="log-delete-btn" data-stock-code="${stockCode}" data-days="10">최근 10일 삭제</button>
-                </div>
                 <button class="log-refresh-btn" data-stock-code="${stockCode}" title="오늘 가격 수동 조회">
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M13.5 2.5L12.5 3.5M13.5 2.5C12.5 1.5 11.2 1 9.5 1C5.9 1 3 3.9 3 7.5M13.5 2.5L12.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -455,16 +450,6 @@ function displayStockCard(data, stockCode) {
     `;
     
     stocksContainer.appendChild(card);
-    
-    // 삭제 버튼 이벤트 리스너 추가 (이 카드에만)
-    const deleteButtons = card.querySelectorAll('.log-delete-btn');
-    deleteButtons.forEach(btn => {
-        btn.addEventListener('click', async function() {
-            const stockCode = this.getAttribute('data-stock-code');
-            const days = parseInt(this.getAttribute('data-days'));
-            await deleteRecentLogs(stockCode, days);
-        });
-    });
     
     // 수동 조회 버튼 이벤트 리스너 추가
     const refreshBtn = card.querySelector('.log-refresh-btn');
