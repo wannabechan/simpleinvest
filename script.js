@@ -706,7 +706,7 @@ function renderLogItems(logElement, logData, ohlc) {
         const prices = entry.prices || {};
         const prevDate = prevTradingDay(entry.date);
         const midpoint = prevDate ? (midpointByDate[prevDate] ?? null) : null;
-        const timeSpans = LOG_TIME_SLOTS.map(hhmm => {
+        const timeLines = LOG_TIME_SLOTS.map(hhmm => {
             const val = prices[hhmm];
             const hasVal = val !== null && val !== undefined && typeof val === 'number';
             const disp = hasVal ? formatPrice(val) : '-';
@@ -716,12 +716,12 @@ function renderLogItems(logElement, logData, ohlc) {
                 else if (val < midpoint) color = '#1a73e8';
                 else color = '#202124';
             }
-            return `<span style="color: ${color}; font-size: 12px; margin-right: 6px;">${hhmm} ${disp}</span>`;
+            return `<div style="color: ${color}; font-size: 12px; margin: 2px 0; overflow-wrap: break-word;">${hhmm} ${disp}</div>`;
         }).join('');
         const borderBottom = index < logData.length - 1 ? 'border-bottom: 1px solid #e8eaed;' : '';
-        return `<div style="margin-bottom: 8px; padding: 4px 0; ${borderBottom}; overflow-wrap: break-word;">
-            <span style="color: #5f6368; font-size: 12px; margin-right: 10px; font-weight: 500;">${entry.date}</span>
-            ${timeSpans}
+        return `<div style="margin-bottom: 10px; padding: 6px 0; ${borderBottom}; overflow-wrap: break-word;">
+            <div style="color: #5f6368; font-size: 12px; font-weight: 500; margin-bottom: 4px;">${entry.date}</div>
+            ${timeLines}
         </div>`;
     }).join('');
     
